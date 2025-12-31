@@ -1,0 +1,11 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#112438" />
+      <stop offset="100%" stop-color="#243c4f" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#g)" />
+  <text x="512" y="520" font-family="Verdana, sans-serif" font-size="46" fill="#e9f6ff" text-anchor="middle">LumeLines</text>
+  <text x="512" y="580" font-family="Verdana, sans-serif" font-size="24" fill="#9fb2c9" text-anchor="middle">Cover Placeholder</text>
+</svg>

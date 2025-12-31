@@ -1,0 +1,148 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="LumeLines: Daily Blocks is a relaxing block puzzle about placing glowing shapes, clearing lines, and chasing daily seeds." />
+    <title>LumeLines: Daily Blocks</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="bg-glow"></div>
+
+      <section id="screen-loading" class="screen screen--active">
+        <div class="card">
+          <h1 class="title">LumeLines</h1>
+          <p class="tagline">Place. Clear. Glow — every day.</p>
+          <div class="loading-bar">
+            <span class="loading-fill"></span>
+          </div>
+          <p class="muted">Loading...</p>
+        </div>
+      </section>
+
+      <section id="screen-menu" class="screen">
+        <div class="card wide">
+          <div class="brand">
+            <h1 class="title">LumeLines: Daily Blocks</h1>
+            <p class="tagline">Place. Clear. Glow — every day.</p>
+          </div>
+          <div class="menu-grid">
+            <button id="btn-play" class="btn primary">Play</button>
+            <button id="btn-daily" class="btn">Daily Challenge</button>
+            <button id="btn-themes" class="btn">Themes</button>
+            <button id="btn-settings" class="btn">Settings</button>
+          </div>
+          <div class="menu-meta">
+            <div class="pill">
+              <span>Best</span>
+              <strong id="menu-best">0</strong>
+            </div>
+            <div class="pill">
+              <span>Tokens</span>
+              <strong id="menu-tokens">0</strong>
+            </div>
+            <div id="adblock-banner" class="hint" hidden>Adblock detected. You can still play normally.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-game" class="screen">
+        <div class="hud">
+          <div class="hud-left">
+            <div class="pill">
+              <span>Score</span>
+              <strong id="hud-score">0</strong>
+            </div>
+            <div class="pill">
+              <span>Combo</span>
+              <strong id="hud-combo">x1.00</strong>
+            </div>
+          </div>
+          <div class="hud-right">
+            <div class="pill">
+              <span>Tokens</span>
+              <strong id="hud-tokens">0</strong>
+            </div>
+            <button id="btn-pause" class="btn ghost">Pause</button>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="game-canvas" width="900" height="1200"></canvas>
+        </div>
+      </section>
+
+      <section id="screen-pause" class="screen">
+        <div class="card">
+          <h2 class="title">Paused</h2>
+          <div class="menu-grid">
+            <button id="btn-resume" class="btn primary">Resume</button>
+            <button id="btn-restart" class="btn">Restart</button>
+            <button id="btn-pause-settings" class="btn">Settings</button>
+            <button id="btn-pause-menu" class="btn ghost">Main Menu</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-results" class="screen">
+        <div class="card wide">
+          <h2 class="title">Run Complete</h2>
+          <div class="results-grid">
+            <div class="stat">
+              <span>Score</span>
+              <strong id="results-score">0</strong>
+            </div>
+            <div class="stat">
+              <span>Best</span>
+              <strong id="results-best">0</strong>
+            </div>
+            <div class="stat">
+              <span>Tokens</span>
+              <strong id="results-tokens">0</strong>
+            </div>
+          </div>
+          <div class="menu-grid">
+            <button id="btn-continue" class="btn primary">Continue (Rewarded)</button>
+            <button id="btn-double" class="btn">Double Tokens (Rewarded)</button>
+            <button id="btn-play-again" class="btn">Play Again</button>
+            <button id="btn-results-menu" class="btn ghost">Main Menu</button>
+          </div>
+          <p id="results-hint" class="hint"></p>
+        </div>
+      </section>
+
+      <section id="screen-themes" class="screen">
+        <div class="card wide">
+          <h2 class="title">Themes</h2>
+          <div id="themes-grid" class="themes-grid"></div>
+          <div class="menu-grid">
+            <button id="btn-themes-back" class="btn ghost">Back</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen">
+        <div class="card">
+          <h2 class="title">Settings</h2>
+          <div class="settings-grid">
+            <label class="toggle">
+              <input id="setting-audio" type="checkbox" />
+              <span>Audio</span>
+            </label>
+            <label class="toggle">
+              <input id="setting-tap" type="checkbox" />
+              <span>Tap to place</span>
+            </label>
+          </div>
+          <div class="menu-grid">
+            <button id="btn-settings-close" class="btn ghost">Close</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="toast" class="toast"></div>
+      <div id="debug-overlay" class="debug" hidden></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

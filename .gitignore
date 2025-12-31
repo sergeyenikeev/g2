@@ -1,0 +1,12 @@
+﻿node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+vite.config.js
+vite.config.d.ts
+vitest.config.js
+vitest.config.d.ts
