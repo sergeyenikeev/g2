@@ -1,99 +1,117 @@
 ﻿Отчет о разработке LumeLines: Daily Blocks
 
-Дата: 2025-12-31
+Дата: 2026-01-02
 
 1) Цели и ограничения
-- Проект спроектирован как офлайн-игра без серверов и регулярного контента.
-- Монетизация только через CrazyGames SDK (midgame + rewarded).
-- Игра полностью играбельна без рекламы (adblock/unfilled/error).
+- Классический block puzzle на поле 10x10 без серверов и онлайн-зависимостей.
+- Полная играбельность при отсутствии рекламы (adblock/unfilled/error).
+- Монетизация только через CrazyGames SDK (midgame + rewarded) по правилам платформы.
+- Минимальная сложность реализации и поддержки.
 
-2) Технический стек
-- TypeScript + Vite для сборки и dev-режима.
-- Рендер: Canvas2D (без тяжелых движков) для максимальной простоты.
-- Тесты: Vitest для core logic.
-- Логи: структурированные INFO/WARN/ERROR, расширенные DEBUG в dev-режиме.
+2) Техстек и обоснование
+- TypeScript + Vite: быстрый дев-цикл, строгая типизация, простая сборка.
+- Canvas2D: самый простой и быстрый для одного разработчика рендер без зависимостей.
+- Vitest: быстрые и стабильные юнит-тесты для core-логики.
 
-3) Архитектура проекта
-- src/core: чистая игровая логика (board, scoring, combo, generator, cooldowns, daily, rng, game).
-- src/app: UI, экранные состояния, рендер, ввод, сценарии запуска/паузы/результатов.
-- src/services: интеграция CrazyGames SDK и слой сохранений.
-- tests: юнит-тесты core logic.
-- promo: метаданные и скриншоты для загрузки на CrazyGames.
+3) Архитектура и модули
+- src/core: чистая игровая логика без UI.
+  - board: проверка размещения фигур и доступности ходов.
+  - scoring/game: подсчет очков, комбо, токенов.
+  - generator/rng: генерация фигур с анти-фрустрацией.
+  - daily: deterministic seed для Daily Challenge.
+  - cooldowns: правила rewarded-кулдаунов.
+- src/app: UI, рендер, состояния и ввод.
+  - App: оркестрация экранов, сессий и SDK.
+  - Renderer: отрисовка поля, фигур, подсветок и эффекта glow.
+  - GameSession: состояние партии и переходы.
+  - ScreenManager/Toast/DebugOverlay: экраны, уведомления, debug-инфо.
+  - AudioManager: воспроизведение музыки и SFX с отдельными настройками.
+- src/services: интеграции.
+  - crazygames: SDK calls (loading, gameplay, ads, adblock, happytime).
+  - storage: Data Module с fallback на localStorage.
+- src/utils: логирование (INFO/WARN/ERROR) и форматирование.
 
-4) Игровая механика (реализовано)
-- Поле 10x10.
-- Очки за размещение: +5 за клетку.
-- Очистка линии: +120 за линию.
-- Бонус мульти-очистки: +80*(L-1) за ход.
-- Комбо: x1.00 старт, +0.25 за ход с очисткой, максимум x2.50. Без очистки — сброс в x1.00.
-- Комбо влияет только на очки очистки.
-- Tokens: max(1, floor(score/1500)).
-- Бонусы Tokens: +2 за новый best score, +3 за первую попытку Daily в день.
-- Темы: 20/35/50/70 Tokens.
-- Rewarded Continue: 1 раз за раунд, score >= 800, новые фигуры [1x1, 1x2, 2x2], комбо сброс.
-- Rewarded Double Tokens: 1 раз за раунд, tokens >= 2, затем tokens *= 2.
-- Кулдаун rewarded: 90 секунд между любыми запросами.
+4) Игровой цикл
+- Игрок получает 3 фигуры и размещает их на поле 10x10.
+- Линии (ряды/колонки) очищаются при полном заполнении.
+- Раунд заканчивается, когда нельзя поставить ни одну фигуру.
+
+5) Скоринг и комбо (реализовано дословно по ТЗ)
+- Размещение: +5 за каждую занятую клетку.
+- Очистка линии: +120 за каждую линию.
+- Бонус за мульти-очистку: +80 * (L - 1), где L — число очищенных линий за ход.
+- Комбо-множитель: старт x1.00, +0.25 за ход с очисткой, максимум x2.50.
+- Ход без очистки сбрасывает комбо к x1.00.
+- Комбо умножает только очки за очистки, очки размещения не умножаются.
+
+6) Экономика
+- Tokens за раунд: max(1, floor(score/1500)).
+- Бонусы: +2 за новый bestScore; +3 за первую попытку Daily в день.
+- Темы: 20 / 35 / 50 / 70 tokens.
+
+7) Rewarded и midgame
+- Midgame показывается только после раунда (Results) или при смене режима.
+- Rewarded выдаются только по кнопке игрока:
+  - Continue: 1 раз за раунд, score >= 800, после просмотра выдаются фигуры [1x1, 1x2, 2x2], комбо сбрасывается.
+  - Double Tokens: 1 раз за раунд, tokens >= 2, после просмотра tokens *= 2.
+- Глобальный кулдаун rewarded: 90 секунд между любыми запросами.
 - Кулдаун Continue: 10 минут между раундами (rewardCooldownUntil).
-- AdError/adblock: награда не выдаётся, сообщение "Ad unavailable", игра не блокируется.
+- AdError/adblock: награда не выдается, показывается “Ad unavailable”, игра продолжается.
 
-5) Генератор фигур
-- Набор из 16 базовых фигур.
-- На первых 10 ходах гарантируется хотя бы 1 доступная фигура.
-- Исключены три крупных фигуры подряд (крупная = size >= 5).
-- Daily-режим детерминированный (seed = YYYYMMDD + lumelines_v1).
+8) Генерация фигур и анти-фрустрация
+- Набор 16 базовых фигур.
+- Первые 10 ходов гарантируют хотя бы 1 размещаемую фигуру из 3.
+- Не выдаются 3 “крупные” фигуры подряд (крупность по числу клеток).
+- Daily Challenge полностью детерминирован: seed = YYYYMMDD + salt “lumelines_v1”.
 
-6) UI/UX и управление
-- Экраны: Loading, Main Menu, Gameplay, Pause, Results, Themes, Settings.
-- Управление: drag-and-drop, на мобильных доступен tap-to-place.
-- HUD: score, combo, tokens.
-- Визуальная тема "Lume" через glow-эффекты на Canvas2D.
+9) Управление и мобильная поддержка
+- Desktop: drag-and-drop мышью.
+- Mobile: drag-and-drop пальцем и режим tap-to-place.
+- На canvas установлен touch-action: none, а обработка указателя использует pointer capture, чтобы жесты не ломались в браузере.
 
-7) Интеграция CrazyGames SDK
-- loadingStart/loadingStop при загрузке.
-- gameplayStart/gameplayStop при входе/выходе из реального геймплея.
-- requestAd("midgame"|"rewarded") с корректными callbacks.
-- hasAdblock() с мягким уведомлением.
-- happytime() на супер-комбо/новый рекорд.
-Подробная карта вызовов: SDK_INTEGRATION.md.
+10) Экраны и UI
+- Boot/Loading, Main Menu, Gameplay, Pause, Results, Themes, Settings.
+- Меню показывает название, слоган и текущие показатели.
+- Results экран содержит CTA, подсказки rewarded и итоговые токены.
+- Settings: отдельные тумблеры для музыки и SFX, а также tap-to-place.
 
-8) Сохранения
-- Используется CrazyGames Data module при наличии, иначе localStorage.
+11) Визуальный стиль “Lume”
+- Эффект мягкого свечения через Canvas2D (подсветка линий/комбо).
+- Минимальные эффекты (альфа/скейл) без тяжелых шейдеров.
+
+12) Аудио
+- Используются реальные WAV-файлы вместо синтеза.
+- Отдельные настройки музыки и SFX.
+- AudioContext активируется на первом пользовательском жесте (политики браузера).
+- Легкая вариация питча для “живого” звучания и настройка уровней.
+
+13) Сохранения
+- Приоритет CrazyGames Data Module, fallback на localStorage.
 - Ключи: bestScore, themesUnlocked, dailyBest_YYYYMMDD, rewardCooldownUntil,
   runsCount, settings, tokens.
 
-9) Тесты
-- 28 тестов в Vitest.
-- Покрытие: canPlace, applyPlacement/clear, scoring, combo, генератор,
+14) Логи и отладка
+- Логируются ключевые события: startSession/startRun/endRun, adRequested/adStarted/adFinished/adError,
+  rewardedUsed/rewardedDenied, purchaseTheme.
+- В dev режиме включается debug overlay (FPS/seed/combo/next pieces).
+
+15) Тесты
+- 28 юнит-тестов (Vitest): canPlace, applyPlacement/clear, scoring+combo, генератор,
   deterministic daily seed, cooldown rules.
-- Результат: npm run test — успешно.
+- Команда: npm run test.
 
-10) Сборка
-- npm run build — успешно.
-- Артефакты сборки в dist/.
+16) Сборка и запуск
+- Скрипты: dev, build, test, lint.
+- VITE_USE_CRAZYGAMES_MOCK управляет использованием mock SDK.
+- Сборка в dist/ (готова для загрузки на CrazyGames).
 
-11) Промо-материалы
-- promo/metadata.json — title/description/tags.
-- promo/screenshots/shot-1.png ... shot-6.png (1280x720).
-- promo/promo-images/cover.svg + thumb.svg (placeholder).
+17) Промо-материалы
+- promo/metadata.json: title/description/tags.
+- promo/screenshots/: Landscape.png, Portrait.png, Square.png, Square2.png.
+- promo/promo-images/: placeholder cover/thumb SVG.
 
-12) Документация
-- README.md: запуск, билд, SDK mock, список файлов для загрузки.
-- ADR-001: обоснование выбора Canvas2D и архитектуры.
-- CHECKLIST.md: QA чек-лист.
-- DEVLOG.md: журнал прогресса.
-
-13) Что сделано
-- Полная реализация игры, UI, логики, сохранений, SDK-обертки.
-- Скриншоты приведены к 1280x720 и переименованы.
-- Подключен CrazyGames SDK скрипт в index.html.
-- Тесты и сборка проходят локально.
-
-14) Что осталось
-- Смоук-тест на реальном CrazyGames SDK в окружении платформы.
-- Замена placeholder cover/thumb при необходимости.
-
-15) Риски и долги
-- Возможные отличия поведения SDK на проде.
-- Проверка drag-and-drop на разных мобильных браузерах.
+18) Текущее состояние и остаток
+- Готово: core-логика, UI, SDK-интеграции, сохранения, тесты, сборка, аудио.
+- Осталось: smoke-тест на реальном CrazyGames SDK, финальные промо-изображения.
 
 Конец отчета.

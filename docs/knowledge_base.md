@@ -1,8 +1,13 @@
 ﻿# База знаний (Codex)
 
-- Никогда не трогаем `notouch.txt`.
-- Сохранение в git: перед коммитом — прогнать тесты, не добавлять чувствительные данные, не коммитить `notouch.txt`.
-- Новые артефакты: план QA — `docs/qa_plan.md`, системный план — `docs/system_plan.md`, рекомендации по UI/UX — `docs/ui_ux_recommendations.md`, DevOps-автоматизация — `docs/devops_automation.md`. Обновлённые инструкции по сборке — `docs/build_and_run.md`.
-- Релиз: перед выкатыванием использовать чек-лист `docs/release_checklist.md` (тесты, миграции, health, релиз-ноты).
-- OPS: рекомендации по развертыванию/мониторингу в `docs/ops_recommendations.md` (healthchecks, NAS, бэкапы, алерты).
-- Язык общения: писать на русском языке.
+- Писать ответы и документацию на русском языке.
+- Не изменять и не коммитить файл `notouch.txt`.
+- Git: не коммитить `lumelines.zip` и `notouch.txt`, пушить только рабочие изменения проекта.
+- Основные документы:
+  - План разработки: `docs/system_plan.md` и `docs/task.md`.
+  - QA: `docs/qa_plan.md`, чеклист релиза `docs/release_checklist.md`.
+  - UI/UX: `docs/ui_ux_recommendations.md`.
+  - DevOps/запуск: `docs/devops_automation.md`, `docs/build_and_run.md`.
+  - OPS: `docs/ops_recommendations.md`.
+- Требования платформы CrazyGames выполнять строго (SDK, офлайн-режим, монетизация).
+- Если что-то нельзя сделать автоматически — выдавать пошаговые инструкции.
