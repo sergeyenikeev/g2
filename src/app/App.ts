@@ -16,7 +16,8 @@ import { CrazyGamesService } from "../services/crazygames";
 import { LocalStorageProvider, StorageService } from "../services/storage";
 
 interface SettingsState {
-  audio: boolean;
+  musicEnabled: boolean;
+  sfxEnabled: boolean;
   tapToPlace: boolean;
   themeId: string;
 }
@@ -96,7 +97,8 @@ export class App {
     resultsHint: document.getElementById("results-hint") as HTMLElement,
     adblockBanner: document.getElementById("adblock-banner") as HTMLElement,
     themesGrid: document.getElementById("themes-grid") as HTMLElement,
-    settingAudio: document.getElementById("setting-audio") as HTMLInputElement,
+    settingMusic: document.getElementById("setting-music") as HTMLInputElement,
+    settingSfx: document.getElementById("setting-sfx") as HTMLInputElement,
     settingTap: document.getElementById("setting-tap") as HTMLInputElement,
     toast: document.getElementById("toast") as HTMLElement,
     debug: document.getElementById("debug-overlay") as HTMLElement
@@ -174,8 +176,13 @@ export class App {
     themesBack?.addEventListener("click", () => this.handleButton(() => this.showScreen("menu")));
     settingsClose?.addEventListener("click", () => this.handleButton(() => this.closeSettings()));
 
-    this.elements.settingAudio.addEventListener("change", () => {
-      this.progress.settings.audio = this.elements.settingAudio.checked;
+    this.elements.settingMusic.addEventListener("change", () => {
+      this.progress.settings.musicEnabled = this.elements.settingMusic.checked;
+      this.applySettings();
+    });
+
+    this.elements.settingSfx.addEventListener("change", () => {
+      this.progress.settings.sfxEnabled = this.elements.settingSfx.checked;
       this.applySettings();
     });
 
@@ -208,6 +215,13 @@ export class App {
     );
     const runsCount = await this.storage.get("runsCount", defaults.runsCount);
     const settings = await this.storage.get("settings", defaults.settings);
+    const normalizedSettings = { ...defaults.settings, ...settings } as SettingsState & {
+      audio?: boolean;
+    };
+    if (typeof normalizedSettings.audio === "boolean") {
+      normalizedSettings.musicEnabled = normalizedSettings.audio;
+      normalizedSettings.sfxEnabled = normalizedSettings.audio;
+    }
 
     this.progress = {
       bestScore,
@@ -215,10 +229,11 @@ export class App {
       themesUnlocked: Array.from(new Set([...themesUnlocked, "lume"])),
       rewardCooldownUntil,
       runsCount,
-      settings: { ...defaults.settings, ...settings }
+      settings: normalizedSettings
     };
 
-    this.elements.settingAudio.checked = this.progress.settings.audio;
+    this.elements.settingMusic.checked = this.progress.settings.musicEnabled;
+    this.elements.settingSfx.checked = this.progress.settings.sfxEnabled;
     this.elements.settingTap.checked = this.progress.settings.tapToPlace;
     this.updateMenuStats();
   }
@@ -233,7 +248,13 @@ export class App {
   }
 
   private applySettings(): void {
-    this.audio.setMuted(!this.progress.settings.audio);
+    this.audio.setSfxEnabled(this.progress.settings.sfxEnabled);
+    this.audio.setMusicEnabled(this.progress.settings.musicEnabled);
+    if (this.activeScreen === "game" && this.progress.settings.musicEnabled) {
+      this.audio.startMusic();
+    } else {
+      this.audio.stopMusic();
+    }
     this.themeManager.setTheme(this.progress.settings.themeId);
     if (this.renderer) {
       this.renderer.setTheme(this.themeManager.getTheme());
@@ -552,7 +573,7 @@ export class App {
       },
       adFinished: () => {
         logger.info("adFinished", { type: "rewarded", kind });
-        this.audio.setMuted(!this.progress.settings.audio);
+        this.audio.setMuted(false);
         if (wasGameplay) {
           this.sdk.gameplayStart();
         }
@@ -560,7 +581,7 @@ export class App {
       },
       adError: (error) => {
         logger.warn("adError", { type: "rewarded", kind, error });
-        this.audio.setMuted(!this.progress.settings.audio);
+        this.audio.setMuted(false);
         if (wasGameplay) {
           this.sdk.gameplayStart();
         }
@@ -917,7 +938,8 @@ export class App {
       rewardCooldownUntil: 0,
       runsCount: 0,
       settings: {
-        audio: true,
+        sfxEnabled: true,
+        musicEnabled: true,
         tapToPlace: isTouch,
         themeId: "lume"
       }
