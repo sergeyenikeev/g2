@@ -70,6 +70,16 @@ export class App {
         offsetY: number;
       }
     | null = null;
+  private dragCandidate:
+    | {
+        pieceId: string;
+        start: Point;
+        offsetX: number;
+        offsetY: number;
+        pointerId: number;
+      }
+    | null = null;
+  private activePointerId: number | null = null;
   private selectedPieceId: string | null = null;
   private fpsSample = { last: 0, frames: 0, fps: 0 };
 
@@ -148,21 +158,21 @@ export class App {
     const themesBack = document.getElementById("btn-themes-back");
     const settingsClose = document.getElementById("btn-settings-close");
 
-    play?.addEventListener("click", () => void this.startRun("play"));
-    daily?.addEventListener("click", () => void this.startRun("daily"));
-    themes?.addEventListener("click", () => this.openThemes());
-    settings?.addEventListener("click", () => this.openSettings("menu"));
-    pause?.addEventListener("click", () => this.pauseGame());
-    resume?.addEventListener("click", () => this.resumeGame());
-    restart?.addEventListener("click", () => this.restartRun());
-    pauseMenu?.addEventListener("click", () => this.returnToMenu());
-    pauseSettings?.addEventListener("click", () => this.openSettings("pause"));
-    resultsMenu?.addEventListener("click", () => this.returnToMenu());
-    playAgain?.addEventListener("click", () => void this.playAgain());
-    continueBtn?.addEventListener("click", () => this.tryContinue());
-    doubleBtn?.addEventListener("click", () => this.tryDoubleTokens());
-    themesBack?.addEventListener("click", () => this.showScreen("menu"));
-    settingsClose?.addEventListener("click", () => this.closeSettings());
+    play?.addEventListener("click", () => this.handleButton(() => void this.startRun("play")));
+    daily?.addEventListener("click", () => this.handleButton(() => void this.startRun("daily")));
+    themes?.addEventListener("click", () => this.handleButton(() => this.openThemes()));
+    settings?.addEventListener("click", () => this.handleButton(() => this.openSettings("menu")));
+    pause?.addEventListener("click", () => this.handleButton(() => this.pauseGame()));
+    resume?.addEventListener("click", () => this.handleButton(() => this.resumeGame()));
+    restart?.addEventListener("click", () => this.handleButton(() => this.restartRun()));
+    pauseMenu?.addEventListener("click", () => this.handleButton(() => this.returnToMenu()));
+    pauseSettings?.addEventListener("click", () => this.handleButton(() => this.openSettings("pause")));
+    resultsMenu?.addEventListener("click", () => this.handleButton(() => this.returnToMenu()));
+    playAgain?.addEventListener("click", () => this.handleButton(() => void this.playAgain()));
+    continueBtn?.addEventListener("click", () => this.handleButton(() => this.tryContinue()));
+    doubleBtn?.addEventListener("click", () => this.handleButton(() => this.tryDoubleTokens()));
+    themesBack?.addEventListener("click", () => this.handleButton(() => this.showScreen("menu")));
+    settingsClose?.addEventListener("click", () => this.handleButton(() => this.closeSettings()));
 
     this.elements.settingAudio.addEventListener("change", () => {
       this.progress.settings.audio = this.elements.settingAudio.checked;
@@ -174,10 +184,17 @@ export class App {
       this.saveProgress();
     });
 
-    this.elements.canvas.addEventListener("pointerdown", (event) => this.onPointerDown(event));
-    this.elements.canvas.addEventListener("pointermove", (event) => this.onPointerMove(event));
-    this.elements.canvas.addEventListener("pointerup", (event) => this.onPointerUp(event));
-    this.elements.canvas.addEventListener("pointerleave", (event) => this.onPointerUp(event));
+    const pointerOptions = { passive: false };
+    this.elements.canvas.addEventListener("pointerdown", (event) => this.onPointerDown(event), pointerOptions);
+    this.elements.canvas.addEventListener("pointermove", (event) => this.onPointerMove(event), pointerOptions);
+    this.elements.canvas.addEventListener("pointerup", (event) => this.onPointerUp(event), pointerOptions);
+    this.elements.canvas.addEventListener("pointerleave", (event) => this.onPointerUp(event), pointerOptions);
+  }
+
+  private handleButton(action: () => void): void {
+    this.audio.unlock();
+    this.audio.playButton();
+    action();
   }
 
   private async loadProgress(): Promise<void> {
@@ -253,6 +270,9 @@ export class App {
       : null;
     this.runFirstDaily = mode === "daily" && this.runStartDailyBest === null;
     this.selectedPieceId = null;
+    this.dragging = null;
+    this.dragCandidate = null;
+    this.activePointerId = null;
 
     logger.info("startSession", { mode, date: formatDateKey(date) });
     logger.info("startRun", { mode, seed });
@@ -268,6 +288,7 @@ export class App {
       selectedPieceId: null
     });
     this.showScreen("game");
+    this.audio.startMusic();
     this.sdk.gameplayStart();
   }
 
@@ -276,6 +297,7 @@ export class App {
       return;
     }
     this.showScreen("pause");
+    this.audio.stopMusic();
     this.sdk.gameplayStop();
   }
 
@@ -284,6 +306,7 @@ export class App {
       return;
     }
     this.showScreen("game");
+    this.audio.startMusic();
     this.sdk.gameplayStart();
   }
 
@@ -306,6 +329,7 @@ export class App {
     if (this.activeScreen === "results") {
       void this.finalizeRun();
     }
+    this.audio.stopMusic();
     this.sdk.gameplayStop();
     this.showScreen("menu");
   }
@@ -382,6 +406,8 @@ export class App {
     });
 
     this.sdk.gameplayStop();
+    this.audio.stopMusic();
+    this.audio.playFail();
     this.requestMidgameAd();
 
     if (this.runNewBest) {
@@ -467,6 +493,7 @@ export class App {
         selectedPieceId: null
       });
       this.showScreen("game");
+      this.audio.startMusic();
       this.sdk.gameplayStart();
       logger.info("rewardedUsed", { kind: "continue" });
     });
@@ -546,14 +573,36 @@ export class App {
     if (!this.session || this.activeScreen !== "game") {
       return;
     }
+    this.audio.unlock();
+    if (this.activePointerId !== null && event.pointerId !== this.activePointerId) {
+      return;
+    }
+    if (event.pointerType !== "mouse") {
+      event.preventDefault();
+    }
+    if (this.elements.canvas.setPointerCapture) {
+      this.elements.canvas.setPointerCapture(event.pointerId);
+    }
     const point = this.getCanvasPoint(event);
     const pieceId = this.renderer.hitTestPiece(point);
     const isTapMode = this.progress.settings.tapToPlace && event.pointerType !== "mouse";
 
     if (isTapMode) {
       if (pieceId) {
+        const rect = this.renderer.getPieceRect(pieceId);
+        if (!rect) {
+          return;
+        }
+        this.activePointerId = event.pointerId;
         this.selectedPieceId = pieceId;
-        this.renderer.setState({ selectedPieceId: pieceId });
+        this.dragCandidate = {
+          pieceId,
+          start: point,
+          offsetX: point.x - rect.x,
+          offsetY: point.y - rect.y,
+          pointerId: event.pointerId
+        };
+        this.renderer.setState({ selectedPieceId: pieceId, ghost: undefined });
       } else if (this.selectedPieceId) {
         const cell = this.renderer.getBoardCell(point);
         if (cell) {
@@ -568,11 +617,13 @@ export class App {
       if (!rect) {
         return;
       }
+      this.activePointerId = event.pointerId;
       this.dragging = {
         pieceId,
         offsetX: point.x - rect.x,
         offsetY: point.y - rect.y
       };
+      this.dragCandidate = null;
       this.renderer.setState({
         dragging: { pieceId, x: rect.x, y: rect.y },
         selectedPieceId: null,
@@ -582,10 +633,50 @@ export class App {
   }
 
   private onPointerMove(event: PointerEvent): void {
-    if (!this.session || this.activeScreen !== "game" || !this.dragging) {
+    if (!this.session || this.activeScreen !== "game") {
       return;
     }
+    if (this.activePointerId !== null && event.pointerId !== this.activePointerId) {
+      return;
+    }
+    if (event.pointerType !== "mouse") {
+      event.preventDefault();
+    }
     const point = this.getCanvasPoint(event);
+    if (this.dragCandidate) {
+      const dx = point.x - this.dragCandidate.start.x;
+      const dy = point.y - this.dragCandidate.start.y;
+      if (Math.hypot(dx, dy) < 8) {
+        return;
+      }
+      const piece = this.session.pieces.find(
+        (slot) => slot?.instanceId === this.dragCandidate?.pieceId
+      );
+      if (!piece) {
+        this.dragCandidate = null;
+        this.activePointerId = null;
+        return;
+      }
+      this.dragging = {
+        pieceId: piece.instanceId,
+        offsetX: this.dragCandidate.offsetX,
+        offsetY: this.dragCandidate.offsetY
+      };
+      this.dragCandidate = null;
+      this.selectedPieceId = null;
+      const dragX = point.x - this.dragging.offsetX;
+      const dragY = point.y - this.dragging.offsetY;
+      const ghost = this.getGhostPlacement(piece, { x: dragX, y: dragY });
+      this.renderer.setState({
+        dragging: { pieceId: piece.instanceId, x: dragX, y: dragY },
+        selectedPieceId: null,
+        ghost
+      });
+      return;
+    }
+    if (!this.dragging) {
+      return;
+    }
     const piece = this.session.pieces.find((slot) => slot?.instanceId === this.dragging?.pieceId);
     if (!piece) {
       return;
@@ -602,24 +693,36 @@ export class App {
   }
 
   private onPointerUp(event: PointerEvent): void {
-    if (!this.session || this.activeScreen !== "game" || !this.dragging) {
+    if (!this.session || this.activeScreen !== "game") {
       return;
     }
-    const point = this.getCanvasPoint(event);
-    const piece = this.session.pieces.find((slot) => slot?.instanceId === this.dragging?.pieceId);
-    if (!piece) {
+    if (this.activePointerId !== null && event.pointerId !== this.activePointerId) {
       return;
     }
+    if (event.pointerType !== "mouse") {
+      event.preventDefault();
+    }
+    if (this.elements.canvas.releasePointerCapture) {
+      this.elements.canvas.releasePointerCapture(event.pointerId);
+    }
 
-    const dragX = point.x - this.dragging.offsetX;
-    const dragY = point.y - this.dragging.offsetY;
-    const ghost = this.getGhostPlacement(piece, { x: dragX, y: dragY });
+    if (this.dragging) {
+      const point = this.getCanvasPoint(event);
+      const piece = this.session.pieces.find((slot) => slot?.instanceId === this.dragging?.pieceId);
+      if (piece) {
+        const dragX = point.x - this.dragging.offsetX;
+        const dragY = point.y - this.dragging.offsetY;
+        const ghost = this.getGhostPlacement(piece, { x: dragX, y: dragY });
 
-    if (ghost && ghost.valid) {
-      this.commitPlacement(piece.instanceId, ghost.origin);
+        if (ghost && ghost.valid) {
+          this.commitPlacement(piece.instanceId, ghost.origin);
+        }
+      }
     }
 
     this.dragging = null;
+    this.dragCandidate = null;
+    this.activePointerId = null;
     this.renderer.setState({ dragging: undefined, ghost: undefined });
   }
 
@@ -633,6 +736,7 @@ export class App {
     }
     const ghost = this.getGhostPlacement(piece, { x: cell.x, y: cell.y }, true);
     if (!ghost || !ghost.valid) {
+      this.audio.playFail();
       this.toast.show("Can't place there");
       return;
     }
@@ -647,7 +751,15 @@ export class App {
     }
     const result = this.session.placePiece(pieceId, origin);
     if (!result) {
+      this.audio.playFail();
       return;
+    }
+    this.audio.playPlace();
+    if (result.linesCleared > 0) {
+      this.audio.playClear(result.linesCleared);
+      if (result.linesCleared >= 2) {
+        this.audio.playCombo();
+      }
     }
     this.renderer.setState({
       board: result.state.board,
@@ -764,6 +876,8 @@ export class App {
         action.textContent = theme.id === this.progress.settings.themeId ? "Selected" : "Select";
         action.disabled = theme.id === this.progress.settings.themeId;
         action.addEventListener("click", () => {
+          this.audio.unlock();
+          this.audio.playButton();
           this.progress.settings.themeId = theme.id;
           this.applySettings();
           this.renderThemes();
@@ -771,6 +885,8 @@ export class App {
       } else if (this.progress.tokens >= theme.price) {
         action.textContent = `Buy (${theme.price})`;
         action.addEventListener("click", () => {
+          this.audio.unlock();
+          this.audio.playButton();
           this.progress.tokens -= theme.price;
           this.progress.themesUnlocked.push(theme.id);
           this.progress.settings.themeId = theme.id;
