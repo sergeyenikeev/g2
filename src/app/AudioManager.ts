@@ -1,4 +1,6 @@
-type Channel = "sfx" | "music";
+type BufferKey = "place" | "clear" | "combo" | "fail" | "button" | "music";
+
+type UrlMap = Record<BufferKey, string>;
 
 export class AudioManager {
   private muted = false;
@@ -8,10 +10,48 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
-  private musicTimer: number | null = null;
-  private musicStep = 0;
-  private sfxLevel = 0.6;
-  private musicLevel = 0.22;
+  private buffers: Partial<Record<BufferKey, AudioBuffer>> = {};
+  private loadPromise: Promise<void> | null = null;
+  private musicSource: AudioBufferSourceNode | null = null;
+  private pendingMusicStart = false;
+  private sfxLevel = 0.62;
+  private musicLevel = 0.28;
+  private urls: UrlMap = {
+    place: new URL("../assets/audio/sfx_place.wav", import.meta.url).toString(),
+    clear: new URL("../assets/audio/sfx_clear.wav", import.meta.url).toString(),
+    combo: new URL("../assets/audio/sfx_combo.wav", import.meta.url).toString(),
+    fail: new URL("../assets/audio/sfx_fail.wav", import.meta.url).toString(),
+    button: new URL("../assets/audio/sfx_button.wav", import.meta.url).toString(),
+    music: new URL("../assets/audio/music_loop.wav", import.meta.url).toString()
+  };
+
+  async load(): Promise<void> {
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    const ctx = this.ensureContext();
+    if (!ctx) {
+      return Promise.resolve();
+    }
+    this.loadPromise = Promise.all(
+      (Object.keys(this.urls) as BufferKey[]).map(async (key) => {
+        const response = await fetch(this.urls[key]);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = await ctx.decodeAudioData(arrayBuffer);
+        this.buffers[key] = buffer;
+      })
+    )
+      .then(() => {
+        if (this.pendingMusicStart && this.musicEnabled) {
+          this.startMusicInternal();
+        }
+      })
+      .catch(() => {
+        this.loadPromise = null;
+      });
+
+    return this.loadPromise;
+  }
 
   unlock(): void {
     const ctx = this.ensureContext();
@@ -20,6 +60,10 @@ export class AudioManager {
     }
     if (ctx.state === "suspended") {
       void ctx.resume();
+    }
+    void this.load();
+    if (this.pendingMusicStart && this.musicEnabled) {
+      this.startMusicInternal();
     }
   }
 
@@ -42,77 +86,105 @@ export class AudioManager {
     if (this.musicGain) {
       this.musicGain.gain.value = value ? this.musicLevel : 0;
     }
-    if (!value) {
+    if (value) {
+      this.startMusic();
+    } else {
       this.stopMusic();
     }
   }
 
-  isMuted(): boolean {
-    return this.muted;
-  }
-
   startMusic(): void {
     const ctx = this.ensureContext();
-    if (!ctx || this.musicTimer !== null || !this.musicEnabled) {
+    if (!ctx || !this.musicEnabled) {
       return;
     }
-    this.musicTimer = window.setInterval(() => {
-      this.playMusicStep();
-    }, 360);
+    if (this.musicSource) {
+      return;
+    }
+    if (!this.buffers.music) {
+      this.pendingMusicStart = true;
+      void this.load();
+      return;
+    }
+    this.startMusicInternal();
   }
 
   stopMusic(): void {
-    if (this.musicTimer !== null) {
-      window.clearInterval(this.musicTimer);
-      this.musicTimer = null;
+    this.pendingMusicStart = false;
+    if (this.musicSource) {
+      this.musicSource.stop();
+      this.musicSource.disconnect();
+      this.musicSource = null;
     }
   }
 
   playPlace(): void {
-    this.playTone(420, 0.09, "triangle", 0.08, "sfx");
-    this.playTone(520, 0.07, "sine", 0.05, "sfx", 0.03);
+    this.playSfx("place", this.varyRate(1.0, 0.04), 0.7);
   }
 
   playClear(lines: number): void {
-    const base = 360 + Math.min(lines, 4) * 35;
-    const intervals = lines <= 1 ? [0, 4] : lines === 2 ? [0, 4, 7] : [0, 4, 7, 11];
-    intervals.forEach((semitone, index) => {
-      const freq = base * this.semitoneRatio(semitone);
-      this.playTone(freq, 0.18, "triangle", 0.08, "sfx", index * 0.04);
-    });
+    const rate = this.varyRate(1 + Math.max(0, lines - 1) * 0.05, 0.02);
+    this.playSfx("clear", rate, 0.85);
+    if (lines > 1) {
+      this.playSfx("clear", rate * 1.08, 0.4, 0.04);
+    }
   }
 
   playCombo(): void {
-    this.playTone(720, 0.14, "triangle", 0.06, "sfx");
-    this.playTone(880, 0.12, "sine", 0.05, "sfx", 0.05);
+    this.playSfx("combo", this.varyRate(1.0, 0.02), 0.85);
   }
 
   playFail(): void {
-    this.playTone(220, 0.18, "sawtooth", 0.04, "sfx");
+    this.playSfx("fail", this.varyRate(1.0, 0.02), 0.75);
   }
 
   playButton(): void {
-    this.playTone(360, 0.06, "sine", 0.05, "sfx");
+    this.playSfx("button", this.varyRate(1.0, 0.03), 0.6);
   }
 
-  private playMusicStep(): void {
-    if (this.muted || !this.musicEnabled) {
+  private startMusicInternal(): void {
+    if (!this.musicEnabled || this.muted) {
       return;
     }
-    const progression = [196, 220, 174, 246];
-    const root = progression[this.musicStep % progression.length];
-    const fifth = root * this.semitoneRatio(7);
-    const octave = root * 2;
-    this.musicStep += 1;
-    this.playTone(root, 0.28, "sine", 0.03, "music");
-    this.playTone(fifth, 0.24, "sine", 0.022, "music", 0.03);
-    if (this.musicStep % 2 === 0) {
-      this.playTone(octave, 0.18, "triangle", 0.018, "music", 0.08);
+    const ctx = this.ensureContext();
+    const buffer = this.buffers.music;
+    if (!ctx || !buffer || !this.musicGain) {
+      return;
     }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(this.musicGain);
+    source.start();
+    this.musicSource = source;
+    this.pendingMusicStart = false;
   }
 
-  private semitoneRatio(semitone: number): number {
-    return Math.pow(2, semitone / 12);
+  private playSfx(key: BufferKey, rate: number, volume: number, delay = 0): void {
+    if (this.muted || !this.sfxEnabled) {
+      return;
+    }
+    const ctx = this.ensureContext();
+    const buffer = this.buffers[key];
+    if (!ctx || !buffer || !this.sfxGain) {
+      void this.load();
+      return;
+    }
+    const source = ctx.createBufferSource();
+    const gainNode = ctx.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    gainNode.gain.value = volume;
+    source.connect(gainNode);
+    gainNode.connect(this.sfxGain);
+    source.start(ctx.currentTime + delay);
+  }
+
+  private varyRate(base: number, spread: number): number {
+    if (spread <= 0) {
+      return base;
+    }
+    return base + (Math.random() * 2 - 1) * spread;
   }
 
   private ensureContext(): AudioContext | null {
@@ -143,43 +215,5 @@ export class AudioManager {
     this.sfxGain = sfxGain;
     this.musicGain = musicGain;
     return ctx;
-  }
-
-  private playTone(
-    frequency: number,
-    duration: number,
-    type: OscillatorType,
-    gain: number,
-    channel: Channel,
-    startDelay = 0
-  ): void {
-    const ctx = this.ensureContext();
-    if (!ctx || this.muted) {
-      return;
-    }
-    if (channel === "sfx" && !this.sfxEnabled) {
-      return;
-    }
-    if (channel === "music" && !this.musicEnabled) {
-      return;
-    }
-    const dest = channel === "music" ? this.musicGain : this.sfxGain;
-    if (!dest) {
-      return;
-    }
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    const now = ctx.currentTime + startDelay;
-
-    osc.type = type;
-    osc.frequency.setValueAtTime(frequency, now);
-    gainNode.gain.setValueAtTime(0.0001, now);
-    gainNode.gain.exponentialRampToValueAtTime(gain, now + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-    osc.connect(gainNode);
-    gainNode.connect(dest);
-    osc.start(now);
-    osc.stop(now + duration + 0.02);
   }
 }

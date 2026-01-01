@@ -37,3 +37,9 @@ Milestone F
 - Done: `npm run test` (28/28 passed) and `npm run build` completed successfully.
 - Remaining: Push to GitHub (g2) and run real CrazyGames SDK smoke test.
 - Risks/Debt: Replace placeholder screenshots in `promo/` before release.
+
+## 2026-01-01
+
+- Done: Added WAV audio assets (music + SFX), tuned levels/pitch variation, preload audio on first gesture.
+- Remaining: Recheck audio balance on mobile devices.
+- Risks/Debt: None.
