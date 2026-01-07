@@ -36,17 +36,17 @@ const normalizeAdResult = (result: RustoreAdResponse | null | undefined): { succ
   return { success: false };
 };
 
-const callBridge = <T extends (...args: unknown[]) => unknown>(
-  fn: T | undefined,
-  ...args: Parameters<T>
-): Promise<Awaited<ReturnType<T>>> => {
+const callBridge = async <TArgs extends unknown[], TResult>(
+  fn: ((...args: TArgs) => TResult | Promise<TResult>) | undefined,
+  ...args: TArgs
+): Promise<Awaited<TResult>> => {
   if (!fn) {
-    return Promise.resolve(undefined as Awaited<ReturnType<T>>);
+    return undefined as Awaited<TResult>;
   }
   try {
-    return Promise.resolve(fn(...args));
+    return await fn(...args);
   } catch (error) {
-    return Promise.reject(error);
+    throw error;
   }
 };
 
