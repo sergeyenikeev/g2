@@ -1,21 +1,41 @@
 ﻿# LumeLines: Daily Blocks
 
-Place. Clear. Glow — every day.
+Place. Clear. Glow - every day.
 
 ## Local development
 
 ```bash
 npm install
-npm run dev
+npm run dev:generic
 ```
 
-## Build for CrazyGames
+Other targets:
 
 ```bash
-npm run build
+npm run dev:crazygames
+npm run dev:poki
+npm run dev:yandex
+npm run dev:vkplay
+npm run dev:rustore
 ```
 
-The production build lands in `dist/`.
+## Builds
+
+```bash
+npm run build:generic
+npm run build:crazygames
+npm run build:poki
+npm run build:yandex
+npm run build:vkplay
+npm run build:rustore
+```
+
+Each build outputs to `dist/<platform>`.
+Rustore builds live in `dist/rustore` and can be packaged with a WebView shell for Android stores; see `docs/rustore_android.md` for the recommended workflow.
+
+## Platform mock
+
+`VITE_USE_PLATFORM_MOCK=1` forces local mocks. When unset, dev defaults to mocks and builds default to real SDKs.
 
 ## Tests
 
@@ -29,30 +49,18 @@ npm run test
 npm run lint
 ```
 
-## CrazyGames SDK mock
-
-The game uses a mock SDK by default in local development.
-
-- Enable mock: `VITE_USE_CRAZYGAMES_MOCK=true`
-- Disable mock: `VITE_USE_CRAZYGAMES_MOCK=false`
-
-You can set this in a `.env` file or as an environment variable before running Vite.
-
-## Upload package
-
-Upload the contents of `dist/` to CrazyGames.
-
 ## Project structure
 
 - `src/core`: game logic (board, scoring, generator)
 - `src/app`: UI, renderer, input, game flow
-- `src/services`: CrazyGames SDK wrapper + storage
+- `src/platform`: platform bridge + adapters
+- `src/services`: storage helpers
 - `tests`: unit tests (Vitest)
 - `promo`: metadata + placeholder marketing assets
 
 ## Data keys
 
-The following keys are stored via CrazyGames Data module (with localStorage fallback):
+The following keys are stored via the platform bridge (with localStorage fallback):
 
 - `bestScore`
 - `themesUnlocked`
@@ -64,4 +72,4 @@ The following keys are stored via CrazyGames Data module (with localStorage fall
 
 ## SDK integration
 
-See `SDK_INTEGRATION.md` for the full call map.
+See `PORTING_GUIDE.md` and `SDK_INTEGRATION_MATRIX.md` for details.

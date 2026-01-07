@@ -1,7 +1,6 @@
 ﻿import { createDailySeed, dailyBestKey, formatDateKey } from "../core/daily";
 import { canPlace } from "../core/board";
 import { tokensFromScore } from "../core/game";
-import { isContinueAllowed, isRewardedAllowed } from "../core/cooldowns";
 import { createSeededRng } from "../core/rng";
 import { ActivePiece, GameMode, Point } from "../core/types";
 import { AudioManager } from "./AudioManager";
@@ -12,21 +11,22 @@ import { ScreenManager } from "./ScreenManager";
 import { ThemeManager, THEMES } from "./ThemeManager";
 import { Toast } from "./Toast";
 import { logger } from "../utils/logger";
-import { CrazyGamesService } from "../services/crazygames";
-import { LocalStorageProvider, StorageService } from "../services/storage";
+import type { PlatformBridge, RewardedKind } from "../platform/bridge";
+import { StorageService } from "../services/storage";
+import { applyTranslations, getDefaultLanguage, Language, normalizeLanguage, t } from "./i18n";
 
 interface SettingsState {
   musicEnabled: boolean;
   sfxEnabled: boolean;
   tapToPlace: boolean;
   themeId: string;
+  language: Language;
 }
 
 interface ProgressState {
   bestScore: number;
   tokens: number;
   themesUnlocked: string[];
-  rewardCooldownUntil: number;
   runsCount: number;
   settings: SettingsState;
 }
@@ -40,6 +40,8 @@ type ScreenId =
   | "themes"
   | "settings";
 
+const MENU_REWARD_TOKENS = 2;
+
 export class App {
   private screens!: ScreenManager;
   private renderer!: Renderer;
@@ -47,13 +49,12 @@ export class App {
   private toast!: Toast;
   private debugOverlay!: DebugOverlay;
   private audio = new AudioManager();
-  private sdk = new CrazyGamesService();
+  private platform: PlatformBridge;
   private storage!: StorageService;
   private session: GameSession | null = null;
   private progress: ProgressState = this.defaultProgress();
   private activeScreen: ScreenId = "loading";
   private returnScreen: ScreenId = "menu";
-  private lastRewardedRequestAt = 0;
   private runTokens = 0;
   private runNewBest = false;
   private runFirstDaily = false;
@@ -86,8 +87,11 @@ export class App {
 
   private elements = {
     canvas: document.getElementById("game-canvas") as HTMLCanvasElement,
+    canvasWrap: document.querySelector(".canvas-wrap") as HTMLElement | null,
+    hud: document.querySelector("#screen-game .hud") as HTMLElement | null,
     menuBest: document.getElementById("menu-best") as HTMLElement,
     menuTokens: document.getElementById("menu-tokens") as HTMLElement,
+    menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
@@ -100,9 +104,17 @@ export class App {
     settingMusic: document.getElementById("setting-music") as HTMLInputElement,
     settingSfx: document.getElementById("setting-sfx") as HTMLInputElement,
     settingTap: document.getElementById("setting-tap") as HTMLInputElement,
+    settingLanguage: document.getElementById("setting-language") as HTMLSelectElement,
+    settingLanguageRow: document
+      .getElementById("setting-language")
+      ?.closest(".toggle") as HTMLElement | null,
     toast: document.getElementById("toast") as HTMLElement,
     debug: document.getElementById("debug-overlay") as HTMLElement
   };
+
+  constructor(platform: PlatformBridge) {
+    this.platform = platform;
+  }
 
   async init(): Promise<void> {
     this.toast = new Toast(this.elements.toast);
@@ -117,12 +129,21 @@ export class App {
       settings: document.getElementById("screen-settings") as HTMLElement
     });
 
-    this.sdk.loadingStart();
-    await this.sdk.init();
+    this.platform.loadingStart();
+    await this.platform.init();
 
-    const dataModule = this.sdk.getDataModule();
-    this.storage = new StorageService(dataModule ?? new LocalStorageProvider());
+    this.storage = new StorageService({
+      getItem: (key) => this.platform.storageGet(key),
+      setItem: (key, value) => this.platform.storageSet(key, value),
+      removeItem: async (key) => {
+        if (this.platform.storageRemove) {
+          await this.platform.storageRemove(key);
+        }
+      }
+    });
     await this.loadProgress();
+    this.applyLanguage();
+    this.configureLanguageSetting();
 
     const theme = this.themeManager.setTheme(this.progress.settings.themeId);
     this.renderer = new Renderer(this.elements.canvas, theme, {
@@ -135,7 +156,7 @@ export class App {
     await this.checkAdblock();
 
     this.showScreen("menu");
-    this.sdk.loadingStop();
+    this.platform.loadingStop();
 
     this.resize();
     requestAnimationFrame((t) => this.loop(t));
@@ -146,6 +167,7 @@ export class App {
 
     const play = document.getElementById("btn-play");
     const daily = document.getElementById("btn-daily");
+    const menuReward = document.getElementById("btn-menu-reward");
     const themes = document.getElementById("btn-themes");
     const settings = document.getElementById("btn-settings");
     const pause = document.getElementById("btn-pause");
@@ -162,6 +184,7 @@ export class App {
 
     play?.addEventListener("click", () => this.handleButton(() => void this.startRun("play")));
     daily?.addEventListener("click", () => this.handleButton(() => void this.startRun("daily")));
+    menuReward?.addEventListener("click", () => this.handleButton(() => void this.tryMenuRewarded()));
     themes?.addEventListener("click", () => this.handleButton(() => this.openThemes()));
     settings?.addEventListener("click", () => this.handleButton(() => this.openSettings("menu")));
     pause?.addEventListener("click", () => this.handleButton(() => this.pauseGame()));
@@ -191,6 +214,23 @@ export class App {
       this.saveProgress();
     });
 
+    document.addEventListener("visibilitychange", () => this.handleVisibilityChange());
+    window.addEventListener("blur", () => this.handleVisibilityChange(true));
+    window.addEventListener("focus", () => this.handleVisibilityChange(false));
+    window.addEventListener("pagehide", () => this.handleVisibilityChange(true));
+    window.addEventListener("pageshow", () => this.handleVisibilityChange(false));
+    document.addEventListener("contextmenu", (event) => this.preventContextMenu(event));
+    document.addEventListener("selectstart", (event) => this.preventSelection(event));
+
+    if (this.platform.id !== "yandex") {
+      this.elements.settingLanguage.addEventListener("change", () => {
+        const selected = normalizeLanguage(this.elements.settingLanguage.value);
+        this.progress.settings.language = selected ?? getDefaultLanguage(this.platform.id);
+        this.applyLanguage();
+        this.saveProgress();
+      });
+    }
+
     const pointerOptions = { passive: false };
     this.elements.canvas.addEventListener("pointerdown", (event) => this.onPointerDown(event), pointerOptions);
     this.elements.canvas.addEventListener("pointermove", (event) => this.onPointerMove(event), pointerOptions);
@@ -209,25 +249,31 @@ export class App {
     const bestScore = await this.storage.get("bestScore", defaults.bestScore);
     const tokens = await this.storage.get("tokens", defaults.tokens);
     const themesUnlocked = await this.storage.get("themesUnlocked", defaults.themesUnlocked);
-    const rewardCooldownUntil = await this.storage.get(
-      "rewardCooldownUntil",
-      defaults.rewardCooldownUntil
-    );
     const runsCount = await this.storage.get("runsCount", defaults.runsCount);
     const settings = await this.storage.get("settings", defaults.settings);
     const normalizedSettings = { ...defaults.settings, ...settings } as SettingsState & {
       audio?: boolean;
+      language?: string;
     };
     if (typeof normalizedSettings.audio === "boolean") {
       normalizedSettings.musicEnabled = normalizedSettings.audio;
       normalizedSettings.sfxEnabled = normalizedSettings.audio;
+    }
+    const storedLanguage = normalizeLanguage(
+      typeof normalizedSettings.language === "string" ? normalizedSettings.language : null
+    );
+    const platformLanguage = normalizeLanguage(await this.platform.getLanguage());
+    if (this.platform.id === "yandex") {
+      normalizedSettings.language = platformLanguage ?? getDefaultLanguage(this.platform.id);
+    } else {
+      normalizedSettings.language =
+        storedLanguage ?? platformLanguage ?? getDefaultLanguage(this.platform.id);
     }
 
     this.progress = {
       bestScore,
       tokens,
       themesUnlocked: Array.from(new Set([...themesUnlocked, "lume"])),
-      rewardCooldownUntil,
       runsCount,
       settings: normalizedSettings
     };
@@ -235,6 +281,7 @@ export class App {
     this.elements.settingMusic.checked = this.progress.settings.musicEnabled;
     this.elements.settingSfx.checked = this.progress.settings.sfxEnabled;
     this.elements.settingTap.checked = this.progress.settings.tapToPlace;
+    this.elements.settingLanguage.value = this.progress.settings.language;
     this.updateMenuStats();
   }
 
@@ -242,7 +289,6 @@ export class App {
     await this.storage.set("bestScore", this.progress.bestScore);
     await this.storage.set("tokens", this.progress.tokens);
     await this.storage.set("themesUnlocked", this.progress.themesUnlocked);
-    await this.storage.set("rewardCooldownUntil", this.progress.rewardCooldownUntil);
     await this.storage.set("runsCount", this.progress.runsCount);
     await this.storage.set("settings", this.progress.settings);
   }
@@ -262,9 +308,64 @@ export class App {
     this.saveProgress();
   }
 
+  private configureLanguageSetting(): void {
+    if (this.platform.id !== "yandex") {
+      return;
+    }
+    this.elements.settingLanguage.disabled = true;
+    if (this.elements.settingLanguageRow) {
+      this.elements.settingLanguageRow.style.display = "none";
+    }
+  }
+
+  private handleVisibilityChange(forceHidden?: boolean): void {
+    const hidden = forceHidden ?? document.hidden;
+    if (hidden) {
+      void this.audio.suspend();
+      this.audio.setMuted(true);
+      this.audio.stopMusic();
+      if (this.activeScreen === "game") {
+        this.platform.gameplayStop();
+      }
+      return;
+    }
+    void this.audio.resume();
+    this.audio.setMuted(false);
+    if (this.activeScreen === "game") {
+      if (this.progress.settings.musicEnabled) {
+        this.audio.startMusic();
+      }
+      this.platform.gameplayStart();
+    }
+  }
+
+  private preventContextMenu(event: Event): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("#app")) {
+      event.preventDefault();
+    }
+  }
+
+  private preventSelection(event: Event): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("#app")) {
+      event.preventDefault();
+    }
+  }
+
+  private applyLanguage(): void {
+    const lang = this.progress.settings.language;
+    applyTranslations(lang);
+    document.documentElement.lang = lang;
+    document.title = t(lang, "title.full");
+    this.elements.settingLanguage.value = lang;
+    this.renderThemes();
+    this.updateResultsHints();
+  }
+
   private async checkAdblock(): Promise<void> {
     try {
-      const adblock = await this.sdk.hasAdblock();
+      const adblock = await this.platform.hasAdblock();
       this.elements.adblockBanner.hidden = !adblock;
     } catch {
       this.elements.adblockBanner.hidden = true;
@@ -310,7 +411,7 @@ export class App {
     });
     this.showScreen("game");
     this.audio.startMusic();
-    this.sdk.gameplayStart();
+    this.platform.gameplayStart();
   }
 
   private pauseGame(): void {
@@ -319,7 +420,7 @@ export class App {
     }
     this.showScreen("pause");
     this.audio.stopMusic();
-    this.sdk.gameplayStop();
+    this.platform.gameplayStop();
   }
 
   private resumeGame(): void {
@@ -328,7 +429,7 @@ export class App {
     }
     this.showScreen("game");
     this.audio.startMusic();
-    this.sdk.gameplayStart();
+    this.platform.gameplayStart();
   }
 
   private restartRun(): void {
@@ -351,7 +452,7 @@ export class App {
       void this.finalizeRun();
     }
     this.audio.stopMusic();
-    this.sdk.gameplayStop();
+    this.platform.gameplayStop();
     this.showScreen("menu");
   }
 
@@ -372,6 +473,9 @@ export class App {
   private showScreen(id: ScreenId): void {
     this.activeScreen = id;
     this.screens.show(id);
+    if (id === "menu") {
+      this.updateMenuRewardState();
+    }
   }
 
   private updateMenuStats(): void {
@@ -393,6 +497,77 @@ export class App {
     const bestDisplay = Math.max(this.progress.bestScore, this.pendingBestScore);
     this.elements.resultsBest.textContent = `${bestDisplay}`;
     this.elements.resultsTokens.textContent = `${this.runTokens}`;
+  }
+
+  private isRewardedAvailable(): boolean {
+    return this.platform.id !== "generic";
+  }
+
+  private getMenuRewardEligibility(): { ok: boolean; reason?: string } {
+    if (!this.isRewardedAvailable()) {
+      return { ok: false, reason: "ads_unavailable" };
+    }
+    return this.platform.canShowRewardedNow("rewarded");
+  }
+
+  private updateMenuRewardState(): void {
+    if (!this.elements.menuReward) {
+      return;
+    }
+    if (!this.isRewardedAvailable()) {
+      this.elements.menuReward.hidden = true;
+      this.elements.menuReward.disabled = true;
+      return;
+    }
+    const eligibility = this.getMenuRewardEligibility();
+    this.elements.menuReward.hidden = false;
+    this.elements.menuReward.disabled = !eligibility.ok;
+  }
+
+  private getContinueEligibility(): { ok: boolean; reason?: string } {
+    if (!this.session) {
+      return { ok: false, reason: "no_session" };
+    }
+    if (this.runFinalized) {
+      return { ok: false, reason: "run_finalized" };
+    }
+    if (!this.isRewardedAvailable()) {
+      return { ok: false, reason: "ads_unavailable" };
+    }
+    if (this.session.continueUsed) {
+      return { ok: false, reason: "already_used" };
+    }
+    if (this.session.state.score < 800) {
+      return { ok: false, reason: "score_low" };
+    }
+    const cooldown = this.platform.canShowRewardedNow("continue");
+    if (!cooldown.ok) {
+      return cooldown;
+    }
+    return { ok: true };
+  }
+
+  private getDoubleEligibility(): { ok: boolean; reason?: string } {
+    if (!this.session) {
+      return { ok: false, reason: "no_session" };
+    }
+    if (this.runFinalized) {
+      return { ok: false, reason: "run_finalized" };
+    }
+    if (!this.isRewardedAvailable()) {
+      return { ok: false, reason: "ads_unavailable" };
+    }
+    if (this.session.doubleTokensUsed) {
+      return { ok: false, reason: "already_used" };
+    }
+    if (this.runTokens < 2) {
+      return { ok: false, reason: "tokens_low" };
+    }
+    const cooldown = this.platform.canShowRewardedNow("double_tokens");
+    if (!cooldown.ok) {
+      return cooldown;
+    }
+    return { ok: true };
   }
 
   private async endRun(): Promise<void> {
@@ -426,7 +601,7 @@ export class App {
       duration
     });
 
-    this.sdk.gameplayStop();
+    this.platform.gameplayStop();
     this.audio.stopMusic();
     this.audio.playFail();
     this.requestMidgameAd();
@@ -459,51 +634,85 @@ export class App {
     if (!this.session) {
       return;
     }
-    const canContinue = isContinueAllowed(
-      this.session.state.score,
-      this.session.continueUsed,
-      this.progress.rewardCooldownUntil,
-      Date.now()
-    );
-    const continueBtn = document.getElementById("btn-continue") as HTMLButtonElement;
-    const doubleBtn = document.getElementById("btn-double") as HTMLButtonElement;
+    const lang = this.progress.settings.language;
+    const doubleEligibility = this.getDoubleEligibility();
+    const adsUnavailable = doubleEligibility.reason === "ads_unavailable";
+    const continueBtn = document.getElementById("btn-continue") as HTMLButtonElement | null;
+    const doubleBtn = document.getElementById("btn-double") as HTMLButtonElement | null;
 
-    continueBtn.disabled = !canContinue.ok || this.runFinalized;
-    doubleBtn.disabled = this.session.doubleTokensUsed || this.runTokens < 2 || this.runFinalized;
+    if (continueBtn) {
+      continueBtn.hidden = true;
+      continueBtn.disabled = true;
+    }
+    if (doubleBtn) {
+      doubleBtn.hidden = adsUnavailable;
+      doubleBtn.disabled = !doubleEligibility.ok;
+    }
 
     const hints: string[] = [];
-    if (!canContinue.ok) {
-      hints.push("Continue unavailable");
+    if (adsUnavailable) {
+      this.elements.resultsHint.textContent = "";
+      return;
     }
-    if (this.runTokens < 2) {
-      hints.push("Need at least 2 tokens to double");
+    if (doubleEligibility.reason === "tokens_low") {
+      hints.push(t(lang, "hint.double_need_tokens", { count: 2 }));
+    }
+    const cooldownHint = this.getCooldownHint(doubleEligibility, lang);
+    if (cooldownHint) {
+      hints.push(cooldownHint);
     }
     this.elements.resultsHint.textContent = hints.join(" - ");
   }
 
-  private tryContinue(): void {
+  private getCooldownHint(
+    doubleEligibility: { ok: boolean; reason?: string },
+    lang: Language
+  ): string | null {
+    if (doubleEligibility.reason === "rewarded_cooldown") {
+      return t(lang, "hint.rewarded_cooldown");
+    }
+    return null;
+  }
+
+  private async tryMenuRewarded(): Promise<void> {
+    const eligibility = this.getMenuRewardEligibility();
+    const lang = this.progress.settings.language;
+    if (!eligibility.ok) {
+      if (eligibility.reason === "rewarded_cooldown") {
+        this.toast.show(t(lang, "toast.rewarded_cooldown"));
+      } else {
+        this.toast.show(t(lang, "toast.ad_unavailable"));
+      }
+      return;
+    }
+    await this.requestRewarded("rewarded", () => {
+      this.progress.tokens += MENU_REWARD_TOKENS;
+      void this.saveProgress();
+      this.updateMenuStats();
+      this.toast.show(t(lang, "toast.rewarded_tokens", { count: MENU_REWARD_TOKENS }));
+    });
+    this.updateMenuRewardState();
+  }
+
+  private async tryContinue(): Promise<void> {
     if (!this.session) {
       return;
     }
-    if (this.runFinalized) {
-      this.toast.show("Continue unavailable");
-      return;
-    }
-    const eligibility = isContinueAllowed(
-      this.session.state.score,
-      this.session.continueUsed,
-      this.progress.rewardCooldownUntil,
-      Date.now()
-    );
+    const eligibility = this.getContinueEligibility();
     if (!eligibility.ok) {
-      logger.warn("rewardedDenied", { reason: eligibility.reason ?? "continue_unavailable" });
-      this.toast.show("Continue unavailable");
+      logger.warn("rewarded_denied", { reason: eligibility.reason ?? "continue_unavailable" });
+      const lang = this.progress.settings.language;
+      if (eligibility.reason === "ads_unavailable") {
+        this.toast.show(t(lang, "toast.ad_unavailable"));
+      } else {
+        this.toast.show(t(lang, "toast.continue_unavailable"));
+      }
       return;
     }
 
-    this.requestRewarded("continue", () => {
+    await this.requestRewarded("continue", () => {
       this.session?.setContinuePieces();
-      this.progress.rewardCooldownUntil = Date.now() + 10 * 60 * 1000;
+      this.platform.markContinueUsed();
       this.saveProgress();
       this.updateHud();
       this.renderer.setState({
@@ -515,8 +724,7 @@ export class App {
       });
       this.showScreen("game");
       this.audio.startMusic();
-      this.sdk.gameplayStart();
-      logger.info("rewardedUsed", { kind: "continue" });
+      this.platform.gameplayStart();
     });
   }
 
@@ -524,70 +732,76 @@ export class App {
     if (!this.session) {
       return;
     }
-    if (this.runFinalized) {
-      return;
-    }
-    if (this.session.doubleTokensUsed || this.runTokens < 2) {
-      logger.warn("rewardedDenied", { reason: "double_unavailable" });
-      this.toast.show("Double tokens unavailable");
+    const eligibility = this.getDoubleEligibility();
+    if (!eligibility.ok) {
+      logger.warn("rewarded_denied", { reason: eligibility.reason ?? "double_unavailable" });
+      const lang = this.progress.settings.language;
+      if (eligibility.reason === "ads_unavailable") {
+        this.toast.show(t(lang, "toast.ad_unavailable"));
+      } else {
+        this.toast.show(t(lang, "toast.double_unavailable"));
+      }
       return;
     }
 
-    this.requestRewarded("double_tokens", () => {
+    await this.requestRewarded("double_tokens", () => {
       this.session!.doubleTokensUsed = true;
       this.runTokens *= 2;
       void this.finalizeRun();
       this.updateResults();
       this.updateResultsHints();
-      logger.info("rewardedUsed", { kind: "double_tokens" });
     });
   }
 
   private requestMidgameAd(): void {
-    logger.info("adRequested", { type: "midgame" });
-    this.sdk.requestAd("midgame", {
-      adStarted: () => logger.info("adStarted", { type: "midgame" }),
-      adFinished: () => logger.info("adFinished", { type: "midgame" }),
-      adError: (error) => logger.warn("adError", { type: "midgame", error })
+    void this.platform.showAd("midgame", {
+      pause: () => {},
+      resume: () => {},
+      grantReward: () => {}
     });
   }
 
-  private requestRewarded(kind: "continue" | "double_tokens", onSuccess: () => void): void {
-    const now = Date.now();
-    if (!isRewardedAllowed(this.lastRewardedRequestAt, now)) {
-      logger.warn("rewardedDenied", { reason: "rewarded_cooldown" });
-      this.toast.show("Rewarded cooldown");
-      return;
-    }
-    this.lastRewardedRequestAt = now;
+  private async requestRewarded(kind: RewardedKind, onSuccess: () => void): Promise<void> {
     const wasGameplay = this.activeScreen === "game";
-
-    logger.info("adRequested", { type: "rewarded", kind });
-    this.sdk.requestAd("rewarded", {
-      adStarted: () => {
-        logger.info("adStarted", { type: "rewarded", kind });
-        this.audio.setMuted(true);
-        if (wasGameplay) {
-          this.sdk.gameplayStop();
-        }
-      },
-      adFinished: () => {
-        logger.info("adFinished", { type: "rewarded", kind });
-        this.audio.setMuted(false);
-        if (wasGameplay) {
-          this.sdk.gameplayStart();
-        }
-        onSuccess();
-      },
-      adError: (error) => {
-        logger.warn("adError", { type: "rewarded", kind, error });
-        this.audio.setMuted(false);
-        if (wasGameplay) {
-          this.sdk.gameplayStart();
-        }
-        this.toast.show("Ad unavailable");
+    let paused = false;
+    const pause = () => {
+      if (paused) {
+        return;
       }
+      paused = true;
+      this.audio.setMuted(true);
+      if (wasGameplay) {
+        this.platform.gameplayStop();
+      }
+    };
+    const resume = () => {
+      if (!paused) {
+        return;
+      }
+      paused = false;
+      this.audio.setMuted(false);
+      if (wasGameplay) {
+        this.platform.gameplayStart();
+      }
+    };
+
+    const result = await this.platform.showAd("rewarded", {
+      rewardKind: kind,
+      pause,
+      resume,
+      grantReward: onSuccess
     });
+
+    if (!result.shown) {
+      resume();
+      if (result.reason === "rewarded_cooldown") {
+        this.toast.show(t(this.progress.settings.language, "toast.rewarded_cooldown"));
+      } else if (result.reason === "continue_cooldown") {
+        this.toast.show(t(this.progress.settings.language, "toast.continue_cooldown"));
+      } else {
+        this.toast.show(t(this.progress.settings.language, "toast.ad_unavailable"));
+      }
+    }
   }
 
   private onPointerDown(event: PointerEvent): void {
@@ -758,7 +972,7 @@ export class App {
     const ghost = this.getGhostPlacement(piece, { x: cell.x, y: cell.y }, true);
     if (!ghost || !ghost.valid) {
       this.audio.playFail();
-      this.toast.show("Can't place there");
+      this.toast.show(t(this.progress.settings.language, "toast.cant_place"));
       return;
     }
     this.commitPlacement(piece.instanceId, ghost.origin);
@@ -827,13 +1041,52 @@ export class App {
       return;
     }
     this.runHappytimeUsed = true;
-    this.sdk.happytime();
+    this.platform.happytime?.();
   }
 
   private resize(): void {
+    this.ensureGameplayCoverage();
     if (this.renderer) {
       this.renderer.resize();
     }
+  }
+
+  private ensureGameplayCoverage(): void {
+    const canvas = this.elements.canvas;
+    const wrap = this.elements.canvasWrap;
+    if (!canvas || !wrap) {
+      return;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    if (viewportWidth <= 0 || viewportHeight <= 0) {
+      return;
+    }
+
+    const hudHeight = this.elements.hud?.getBoundingClientRect().height ?? 0;
+    const style = window.getComputedStyle(wrap);
+    const horizontalPadding =
+      parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+    const verticalPadding =
+      parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+
+    const availableWidth = Math.max(viewportWidth - horizontalPadding, 0);
+    const availableHeight = Math.max(viewportHeight - hudHeight - verticalPadding, 0);
+    if (availableWidth <= 0 || availableHeight <= 0) {
+      return;
+    }
+
+    const requiredArea = viewportWidth * viewportHeight * 0.7;
+    const targetSide = Math.sqrt(requiredArea);
+    const baseSide = Math.min(availableWidth, availableHeight);
+    const side = Math.min(targetSide, baseSide);
+    if (side <= 0) {
+      return;
+    }
+
+    canvas.style.width = `${Math.round(side)}px`;
+    canvas.style.height = `${Math.round(side)}px`;
   }
 
   private loop(time: number): void {
@@ -857,11 +1110,19 @@ export class App {
       this.fpsSample.last = time;
     }
     this.debugOverlay.setVisible(true);
+    const cooldowns = this.platform.getCooldownStatus();
+    const now = Date.now();
+    const rewardedCooldownMs = Math.max(0, cooldowns.rewardedAvailableAt - now);
+    const continueCooldownMs = Math.max(0, cooldowns.continueAvailableAt - now);
     this.debugOverlay.update({
       fps: this.fpsSample.fps,
       seed: this.session.state.seed,
       combo: this.session.state.combo,
-      nextPieces: this.session.pieces
+      nextPieces: this.session.pieces,
+      platform: this.platform.id,
+      mode: this.session.state.mode,
+      rewardedCooldownMs,
+      continueCooldownMs
     });
   }
 
@@ -874,6 +1135,7 @@ export class App {
   }
 
   private renderThemes(): void {
+    const lang = this.progress.settings.language;
     this.elements.themesGrid.innerHTML = "";
     for (const theme of THEMES) {
       const card = document.createElement("div");
@@ -884,17 +1146,20 @@ export class App {
       preview.style.background = `linear-gradient(135deg, ${theme.palette.block}, ${theme.palette.accentAlt})`;
 
       const title = document.createElement("strong");
-      title.textContent = theme.name;
+      title.textContent = t(lang, `theme.name.${theme.id}`);
 
       const cost = document.createElement("span");
-      cost.textContent = `${theme.price} Tokens`;
+      cost.textContent = t(lang, "theme.price", { price: theme.price });
 
       const action = document.createElement("button");
       action.className = "btn";
 
       const unlocked = this.progress.themesUnlocked.includes(theme.id);
       if (unlocked) {
-        action.textContent = theme.id === this.progress.settings.themeId ? "Selected" : "Select";
+        action.textContent =
+          theme.id === this.progress.settings.themeId
+            ? t(lang, "theme.action.selected")
+            : t(lang, "theme.action.select");
         action.disabled = theme.id === this.progress.settings.themeId;
         action.addEventListener("click", () => {
           this.audio.unlock();
@@ -904,7 +1169,7 @@ export class App {
           this.renderThemes();
         });
       } else if (this.progress.tokens >= theme.price) {
-        action.textContent = `Buy (${theme.price})`;
+        action.textContent = t(lang, "theme.action.buy", { price: theme.price });
         action.addEventListener("click", () => {
           this.audio.unlock();
           this.audio.playButton();
@@ -917,7 +1182,7 @@ export class App {
           this.renderThemes();
         });
       } else {
-        action.textContent = `Need ${theme.price}`;
+        action.textContent = t(lang, "theme.action.need", { price: theme.price });
         action.disabled = true;
       }
 
@@ -935,13 +1200,13 @@ export class App {
       bestScore: 0,
       tokens: 0,
       themesUnlocked: ["lume"],
-      rewardCooldownUntil: 0,
       runsCount: 0,
       settings: {
         sfxEnabled: true,
         musicEnabled: true,
         tapToPlace: isTouch,
-        themeId: "lume"
+        themeId: "lume",
+        language: "en"
       }
     };
   }
