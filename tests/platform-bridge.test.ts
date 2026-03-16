@@ -162,3 +162,64 @@ describe("storage fallback", () => {
     expect(adapterStore.get("k")).toBe("v");
   });
 });
+
+describe("analytics tracking", () => {
+  it("tracks rewarded ad lifecycle events through the bridge", async () => {
+    const tracked: Array<{ eventName: string; payload?: Record<string, unknown> }> = [];
+    const adapter: PlatformAdapter = {
+      ...createTestAdapter(),
+      track: (eventName, payload) => {
+        tracked.push({ eventName, payload });
+      }
+    };
+    const bridge = createPlatformBridge(adapter);
+
+    await bridge.showAd("rewarded", {
+      pause: () => {},
+      resume: () => {},
+      grantReward: () => {}
+    });
+
+    expect(tracked.map((entry) => entry.eventName)).toEqual([
+      "adRequested",
+      "adStarted",
+      "rewardedUsed",
+      "adFinished"
+    ]);
+  });
+
+  it("tracks rewarded denial when cooldown blocks the request", async () => {
+    const tracked: Array<{ eventName: string; payload?: Record<string, unknown> }> = [];
+    let now = 1_000;
+    const adapter: PlatformAdapter = {
+      ...createTestAdapter(),
+      track: (eventName, payload) => {
+        tracked.push({ eventName, payload });
+      }
+    };
+    const bridge = createPlatformBridge(adapter, { clock: { now: () => now } });
+
+    await bridge.showAd("rewarded", {
+      pause: () => {},
+      resume: () => {},
+      grantReward: () => {}
+    });
+    now += REWARDED_COOLDOWN_MS - 1;
+
+    const result = await bridge.showAd("rewarded", {
+      pause: () => {},
+      resume: () => {},
+      grantReward: () => {}
+    });
+
+    expect(result).toEqual({ shown: false, reason: "rewarded_cooldown" });
+    expect(tracked[tracked.length - 1]).toEqual({
+      eventName: "rewardedDenied",
+      payload: {
+        platform: "generic",
+        kind: "rewarded",
+        reason: "rewarded_cooldown"
+      }
+    });
+  });
+});

@@ -8,6 +8,12 @@ The game now routes all SDK calls through `PlatformBridge`.
 - `src/platform/*/adapter.ts` contains platform-specific SDK calls only.
 - `src/app/App.ts` uses the bridge for loading, gameplay, ads, storage, analytics, and happytime.
 
+## Tracked events
+- Run flow: `startSession`, `startRun`, `endRun`
+- Reward flow: `rewardedDenied`, `rewardedUsed`
+- Ads: `adRequested`, `adStarted`, `adFinished`, `adError`
+- Economy: `purchaseTheme`
+
 ## Reference
 - `SDK_INTEGRATION_MATRIX.md` for per-platform capability coverage.
 - `PORTING_GUIDE.md` for manual SDK wiring steps.

@@ -229,6 +229,11 @@ export class App {
     this.elements.canvas.addEventListener("pointermove", (event) => this.onPointerMove(event), pointerOptions);
     this.elements.canvas.addEventListener("pointerup", (event) => this.onPointerUp(event), pointerOptions);
     this.elements.canvas.addEventListener("pointerleave", (event) => this.onPointerUp(event), pointerOptions);
+    this.elements.canvas.addEventListener(
+      "pointercancel",
+      (event) => this.onPointerCancel(event),
+      pointerOptions
+    );
   }
 
   private handleButton(action: () => void): void {
@@ -382,6 +387,8 @@ export class App {
 
     logger.info("startSession", { mode, date: formatDateKey(date) });
     logger.info("startRun", { mode, seed });
+    this.platform.track("startSession", { mode, date: formatDateKey(date) });
+    this.platform.track("startRun", { mode, seed });
     this.progress.runsCount += 1;
     await this.saveProgress();
 
@@ -584,6 +591,13 @@ export class App {
       lines: this.session.state.linesCleared,
       duration
     });
+    this.platform.track("endRun", {
+      mode,
+      seed: this.session.state.seed,
+      score,
+      lines: this.session.state.linesCleared,
+      duration
+    });
 
     this.platform.gameplayStop();
     this.audio.stopMusic();
@@ -680,6 +694,10 @@ export class App {
     const eligibility = this.getMenuRewardEligibility();
     const lang = this.progress.settings.language;
     if (!eligibility.ok) {
+      this.platform.track("rewardedDenied", {
+        kind: "rewarded",
+        reason: eligibility.reason ?? "unavailable"
+      });
       if (eligibility.reason === "rewarded_cooldown") {
         this.toast.show(t(lang, "toast.rewarded_cooldown"));
       } else {
@@ -703,6 +721,10 @@ export class App {
     const eligibility = this.getContinueEligibility();
     if (!eligibility.ok) {
       logger.warn("rewarded_denied", { reason: eligibility.reason ?? "continue_unavailable" });
+      this.platform.track("rewardedDenied", {
+        kind: "continue",
+        reason: eligibility.reason ?? "continue_unavailable"
+      });
       const lang = this.progress.settings.language;
       if (eligibility.reason === "ads_unavailable") {
         this.toast.show(t(lang, "toast.ad_unavailable"));
@@ -740,6 +762,10 @@ export class App {
     const eligibility = this.getDoubleEligibility();
     if (!eligibility.ok) {
       logger.warn("rewarded_denied", { reason: eligibility.reason ?? "double_unavailable" });
+      this.platform.track("rewardedDenied", {
+        kind: "double_tokens",
+        reason: eligibility.reason ?? "double_unavailable"
+      });
       const lang = this.progress.settings.language;
       if (eligibility.reason === "ads_unavailable") {
         this.toast.show(t(lang, "toast.ad_unavailable"));
@@ -963,10 +989,25 @@ export class App {
       }
     }
 
-    this.dragging = null;
-    this.dragCandidate = null;
-    this.activePointerId = null;
-    this.renderer.setState({ dragging: undefined, ghost: undefined });
+    this.resetPointerInteraction();
+  }
+
+  private onPointerCancel(event: PointerEvent): void {
+    if (!this.session || this.activeScreen !== "game") {
+      return;
+    }
+    if (this.activePointerId !== null && event.pointerId !== this.activePointerId) {
+      return;
+    }
+    if (this.elements.canvas.hasPointerCapture?.(event.pointerId)) {
+      this.elements.canvas.releasePointerCapture(event.pointerId);
+    }
+    const keepSelection =
+      this.progress.settings.tapToPlace &&
+      this.selectedPieceId !== null &&
+      this.dragging === null &&
+      this.dragCandidate !== null;
+    this.resetPointerInteraction({ clearSelection: !keepSelection });
   }
 
   private tryPlaceSelected(cell: Point): void {
@@ -1141,6 +1182,22 @@ export class App {
     };
   }
 
+  private resetPointerInteraction(options?: { clearSelection?: boolean }): void {
+    this.dragging = null;
+    this.dragCandidate = null;
+    this.activePointerId = null;
+    if (options?.clearSelection) {
+      this.selectedPieceId = null;
+      this.renderer.setState({
+        dragging: undefined,
+        ghost: undefined,
+        selectedPieceId: null
+      });
+      return;
+    }
+    this.renderer.setState({ dragging: undefined, ghost: undefined });
+  }
+
   private renderThemes(): void {
     const lang = this.progress.settings.language;
     this.elements.themesGrid.innerHTML = "";
@@ -1184,6 +1241,10 @@ export class App {
           this.progress.themesUnlocked.push(theme.id);
           this.progress.settings.themeId = theme.id;
           logger.info("purchaseTheme", { themeId: theme.id });
+          this.platform.track("purchaseTheme", {
+            themeId: theme.id,
+            price: theme.price
+          });
           this.applySettings();
           this.updateMenuStats();
           this.renderThemes();

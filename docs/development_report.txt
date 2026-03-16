@@ -95,11 +95,12 @@
 14) Логи и отладка
 - Логируются ключевые события: startSession/startRun/endRun, adRequested/adStarted/adFinished/adError,
   rewardedUsed/rewardedDenied, purchaseTheme.
+- Те же ключевые события отправляются через `PlatformBridge.track`, чтобы их можно было прокинуть в платформенную аналитику.
 - В dev режиме включается debug overlay (FPS/seed/combo/next pieces).
 
 15) Тесты
-- 28 юнит-тестов (Vitest): canPlace, applyPlacement/clear, scoring+combo, генератор,
-  deterministic daily seed, cooldown rules.
+- 48 юнит-тестов (Vitest): canPlace, applyPlacement/clear, scoring+combo, генератор,
+  deterministic daily seed, cooldown rules, нормализация прогресса и tracking ad/reward событий.
 - Команда: npm run test.
 
 16) Сборка и запуск

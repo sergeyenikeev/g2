@@ -159,11 +159,17 @@ export class PlatformBridgeImpl implements PlatformBridge {
       ? { type, platform: this.id, kind: rewardKind }
       : { type, platform: this.id };
     logger.info("ad_requested", basePayload);
+    this.track("adRequested", basePayload);
 
     if (type === "rewarded") {
       const eligibility = this.canShowRewardedNow(rewardKind ?? "rewarded");
       if (!eligibility.ok) {
         logger.warn("rewarded_denied", {
+          platform: this.id,
+          kind: rewardKind ?? "rewarded",
+          reason: eligibility.reason ?? "cooldown"
+        });
+        this.track("rewardedDenied", {
           platform: this.id,
           kind: rewardKind ?? "rewarded",
           reason: eligibility.reason ?? "cooldown"
@@ -179,18 +185,24 @@ export class PlatformBridgeImpl implements PlatformBridge {
         if (!started) {
           started = true;
           logger.info("ad_started", basePayload);
+          this.track("adStarted", basePayload);
         }
         ctx.pause();
       },
       resume: () => {
         if (started) {
           logger.info("ad_finished", basePayload);
+          this.track("adFinished", basePayload);
         }
         ctx.resume();
       },
       grantReward: () => {
         if (type === "rewarded") {
           logger.info("rewarded_used", {
+            kind: rewardKind ?? "rewarded",
+            platform: this.id
+          });
+          this.track("rewardedUsed", {
             kind: rewardKind ?? "rewarded",
             platform: this.id
           });
@@ -208,6 +220,11 @@ export class PlatformBridgeImpl implements PlatformBridge {
           platform: this.id,
           reason: result.reason ?? "not_shown"
         });
+        this.track("adError", {
+          type,
+          platform: this.id,
+          reason: result.reason ?? "not_shown"
+        });
       }
       return result;
     } catch (error) {
@@ -216,6 +233,11 @@ export class PlatformBridgeImpl implements PlatformBridge {
         platform: this.id,
         reason: "exception",
         error: toErrorString(error)
+      });
+      this.track("adError", {
+        type,
+        platform: this.id,
+        reason: "exception"
       });
       return { shown: false, reason: "exception" };
     }

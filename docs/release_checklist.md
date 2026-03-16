@@ -1,4 +1,4 @@
-# Release Checklist
+﻿# Release Checklist
 
 ## Перед сборкой
 - Проверить целевой режим (`.env.<platform>`) и что `VITE_PLATFORM` выставлен корректно.

@@ -1,4 +1,4 @@
-# Сборка и запуск LumeLines: Daily Blocks
+﻿# Сборка и запуск LumeLines: Daily Blocks
 
 ## Требования
 - Node.js 20+
