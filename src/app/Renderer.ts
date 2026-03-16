@@ -299,28 +299,132 @@ export class Renderer {
     const rect = this.canvas.getBoundingClientRect();
     const width = rect.width;
     const height = rect.height;
-    const minTrayHeight = height * 0.25;
-    let boardSize = Math.min(width * 0.9, height * 0.6);
-    if (height - boardSize < minTrayHeight) {
-      boardSize = height - minTrayHeight;
+    const margin = 18;
+    const maxPieceCells = 4;
+    const slotGapCells = 0.4;
+    const slotPadCells = 0.6;
+
+    if (width > height * 1.1) {
+      const gap = Math.max(24, Math.round(width * 0.02));
+      const availableWidth = width - margin * 2;
+      const availableHeight = height - margin * 2;
+      const availableWidthForBoard = availableWidth - gap;
+
+      const buildWideLayout = (columns: 1 | 2, rows: 2 | 3) => {
+        if (availableWidthForBoard <= 0 || availableHeight <= 0) {
+          return null;
+        }
+        const trayWidthCells =
+          columns * maxPieceCells + (columns - 1) * slotGapCells + slotPadCells * 2;
+        const trayHeightCells =
+          rows * maxPieceCells + (rows - 1) * slotGapCells + slotPadCells * 2;
+
+        const maxCellByHeight = Math.min(availableHeight / BOARD_SIZE, availableHeight / trayHeightCells);
+        const maxCellByWidth = availableWidthForBoard / (BOARD_SIZE + trayWidthCells);
+        const cellSize = Math.max(1, Math.floor(Math.min(maxCellByHeight, maxCellByWidth)));
+        if (!Number.isFinite(cellSize) || cellSize < 1) {
+          return null;
+        }
+
+        const boardSize = cellSize * BOARD_SIZE;
+        const boardRect = {
+          x: margin,
+          y: (height - boardSize) / 2,
+          w: boardSize,
+          h: boardSize
+        };
+
+        const trayX0 = boardRect.x + boardRect.w + gap;
+        const trayX1 = width - margin;
+        const trayWidth = Math.max(trayX1 - trayX0, 0);
+        if (trayWidth <= 0) {
+          return null;
+        }
+
+        const slotSize = maxPieceCells * cellSize;
+        const gapPx = slotGapCells * cellSize;
+        const padPx = slotPadCells * cellSize;
+        const trayInnerWidth = trayWidthCells * cellSize;
+        const trayInnerHeight = trayHeightCells * cellSize;
+        const trayInnerX = trayX0 + (trayWidth - trayInnerWidth) / 2;
+        const trayInnerY = margin + (availableHeight - trayInnerHeight) / 2;
+
+        const slotCenters =
+          columns === 2 && rows === 2
+            ? (() => {
+                const x1 = trayInnerX + padPx + slotSize / 2;
+                const x2 = x1 + slotSize + gapPx;
+                const y1 = trayInnerY + padPx + slotSize / 2;
+                const y2 = y1 + slotSize + gapPx;
+                return [
+                  { x: x1, y: y1 },
+                  { x: x2, y: y1 },
+                  { x: (x1 + x2) / 2, y: y2 }
+                ];
+              })()
+            : Array.from({ length: rows }, (_, index) => ({
+                x: trayInnerX + trayInnerWidth / 2,
+                y: trayInnerY + padPx + slotSize / 2 + index * (slotSize + gapPx)
+              }));
+
+        return { cellSize, boardRect, slotCenters };
+      };
+
+      const twoColumn = buildWideLayout(2, 2);
+      const oneColumn = buildWideLayout(1, 3);
+      const chosen =
+        twoColumn && oneColumn
+          ? twoColumn.cellSize >= oneColumn.cellSize
+            ? twoColumn
+            : oneColumn
+          : twoColumn ?? oneColumn;
+
+      if (chosen) {
+        return { width, height, cellSize: chosen.cellSize, boardRect: chosen.boardRect, slotCenters: chosen.slotCenters };
+      }
     }
-    boardSize = Math.min(boardSize, width * 0.9);
-    const cellSize = Math.floor(boardSize / BOARD_SIZE);
-    boardSize = cellSize * BOARD_SIZE;
+
+    const availableWidth = width - margin * 2;
+    const availableHeight = height - margin * 2;
+    const gapBoardTrayCells = 1.2;
+    const trayColumns = 2;
+    const trayRows = 2;
+    const trayWidthCells =
+      trayColumns * maxPieceCells + (trayColumns - 1) * slotGapCells + slotPadCells * 2;
+    const trayHeightCells =
+      trayRows * maxPieceCells + (trayRows - 1) * slotGapCells + slotPadCells * 2;
+    const totalHeightCells = BOARD_SIZE + gapBoardTrayCells + trayHeightCells;
+    const widthCells = Math.max(BOARD_SIZE, trayWidthCells);
+    let cellSize = Math.max(
+      1,
+      Math.floor(Math.min(availableWidth / widthCells, availableHeight / totalHeightCells))
+    );
+    if (!Number.isFinite(cellSize) || cellSize < 1) {
+      cellSize = 1;
+    }
+    const boardSize = cellSize * BOARD_SIZE;
     const boardRect = {
       x: (width - boardSize) / 2,
-      y: 18,
+      y: margin,
       w: boardSize,
       h: boardSize
     };
-    const trayY = boardRect.y + boardRect.h + 40;
-    const slotAreaWidth = boardSize;
-    const gap = slotAreaWidth * 0.06;
-    const slotWidth = (slotAreaWidth - gap * 2) / 3;
-    const slotCenters = Array.from({ length: 3 }, (_, index) => ({
-      x: boardRect.x + slotWidth / 2 + index * (slotWidth + gap),
-      y: trayY + slotWidth * 0.4
-    }));
+    const gapBoardTrayPx = gapBoardTrayCells * cellSize;
+    const trayInnerWidth = trayWidthCells * cellSize;
+    const trayInnerX = (width - trayInnerWidth) / 2;
+    const trayInnerY = boardRect.y + boardRect.h + gapBoardTrayPx;
+    const slotSize = maxPieceCells * cellSize;
+    const gapPx = slotGapCells * cellSize;
+    const padPx = slotPadCells * cellSize;
+    const x1 = trayInnerX + padPx + slotSize / 2;
+    const x2 = x1 + slotSize + gapPx;
+    const y1 = trayInnerY + padPx + slotSize / 2;
+    const y2 = y1 + slotSize + gapPx;
+    const slotCenters = [
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: (x1 + x2) / 2, y: y2 }
+    ];
     return { width, height, cellSize, boardRect, slotCenters };
   }
 

@@ -1,16 +1,16 @@
-﻿export interface StorageProvider {
-  getItem: (key: string) => Promise<unknown>;
-  setItem: (key: string, value: unknown) => Promise<void>;
+export interface StorageProvider {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+  removeItem?: (key: string) => Promise<void>;
 }
 
 export class LocalStorageProvider implements StorageProvider {
-  async getItem(key: string): Promise<unknown> {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+  async getItem(key: string): Promise<string | null> {
+    return localStorage.getItem(key);
   }
 
-  async setItem(key: string, value: unknown): Promise<void> {
-    localStorage.setItem(key, JSON.stringify(value));
+  async setItem(key: string, value: string): Promise<void> {
+    localStorage.setItem(key, value);
   }
 }
 
@@ -20,7 +20,10 @@ export class StorageService {
   async getOptional<T>(key: string): Promise<T | null> {
     try {
       const value = await this.provider.getItem(key);
-      return (value ?? null) as T | null;
+      if (value === null) {
+        return null;
+      }
+      return JSON.parse(value) as T;
     } catch {
       return null;
     }
@@ -29,7 +32,10 @@ export class StorageService {
   async get<T>(key: string, fallback: T): Promise<T> {
     try {
       const value = await this.provider.getItem(key);
-      return (value ?? fallback) as T;
+      if (value === null) {
+        return fallback;
+      }
+      return JSON.parse(value) as T;
     } catch {
       return fallback;
     }
@@ -37,7 +43,7 @@ export class StorageService {
 
   async set<T>(key: string, value: T): Promise<void> {
     try {
-      await this.provider.setItem(key, value);
+      await this.provider.setItem(key, JSON.stringify(value));
     } catch {
       // Ignore storage errors.
     }

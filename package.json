@@ -14,6 +14,8 @@
     "dev:newgrounds": "vite --mode newgrounds",
     "dev:itchio": "vite --mode itchio",
     "build": "npm run build:generic",
+    "build:all": "node scripts/build-all.mjs",
+    "build:all:mock": "node scripts/build-all.mjs --mock",
     "build:generic": "tsc -b && vite build --mode generic",
     "build:crazygames": "tsc -b && vite build --mode crazygames",
     "build:poki": "tsc -b && vite build --mode poki",

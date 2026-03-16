@@ -14,22 +14,12 @@ import { logger } from "../utils/logger";
 import type { PlatformBridge, RewardedKind } from "../platform/bridge";
 import { StorageService } from "../services/storage";
 import { applyTranslations, getDefaultLanguage, Language, normalizeLanguage, t } from "./i18n";
-
-interface SettingsState {
-  musicEnabled: boolean;
-  sfxEnabled: boolean;
-  tapToPlace: boolean;
-  themeId: string;
-  language: Language;
-}
-
-interface ProgressState {
-  bestScore: number;
-  tokens: number;
-  themesUnlocked: string[];
-  runsCount: number;
-  settings: SettingsState;
-}
+import {
+  createDefaultProgress,
+  detectTouchSupport,
+  normalizeStoredProgress,
+  ProgressState
+} from "./progress";
 
 type ScreenId =
   | "loading"
@@ -52,7 +42,10 @@ export class App {
   private platform: PlatformBridge;
   private storage!: StorageService;
   private session: GameSession | null = null;
-  private progress: ProgressState = this.defaultProgress();
+  private progress: ProgressState = createDefaultProgress({
+    platformId: "generic",
+    isTouch: detectTouchSupport()
+  });
   private activeScreen: ScreenId = "loading";
   private returnScreen: ScreenId = "menu";
   private runTokens = 0;
@@ -245,38 +238,29 @@ export class App {
   }
 
   private async loadProgress(): Promise<void> {
-    const defaults = this.defaultProgress();
-    const bestScore = await this.storage.get("bestScore", defaults.bestScore);
-    const tokens = await this.storage.get("tokens", defaults.tokens);
-    const themesUnlocked = await this.storage.get("themesUnlocked", defaults.themesUnlocked);
-    const runsCount = await this.storage.get("runsCount", defaults.runsCount);
-    const settings = await this.storage.get("settings", defaults.settings);
-    const normalizedSettings = { ...defaults.settings, ...settings } as SettingsState & {
-      audio?: boolean;
-      language?: string;
-    };
-    if (typeof normalizedSettings.audio === "boolean") {
-      normalizedSettings.musicEnabled = normalizedSettings.audio;
-      normalizedSettings.sfxEnabled = normalizedSettings.audio;
-    }
-    const storedLanguage = normalizeLanguage(
-      typeof normalizedSettings.language === "string" ? normalizedSettings.language : null
-    );
-    const platformLanguage = normalizeLanguage(await this.platform.getLanguage());
-    if (this.platform.id === "yandex") {
-      normalizedSettings.language = platformLanguage ?? getDefaultLanguage(this.platform.id);
-    } else {
-      normalizedSettings.language =
-        storedLanguage ?? platformLanguage ?? getDefaultLanguage(this.platform.id);
-    }
+    const [bestScore, tokens, themesUnlocked, runsCount, settings, platformLanguage] = await Promise.all([
+      this.storage.getOptional<unknown>("bestScore"),
+      this.storage.getOptional<unknown>("tokens"),
+      this.storage.getOptional<unknown>("themesUnlocked"),
+      this.storage.getOptional<unknown>("runsCount"),
+      this.storage.getOptional<unknown>("settings"),
+      this.platform.getLanguage()
+    ]);
 
-    this.progress = {
-      bestScore,
-      tokens,
-      themesUnlocked: Array.from(new Set([...themesUnlocked, "lume"])),
-      runsCount,
-      settings: normalizedSettings
-    };
+    this.progress = normalizeStoredProgress(
+      {
+        bestScore,
+        tokens,
+        themesUnlocked,
+        runsCount,
+        settings
+      },
+      {
+        platformId: this.platform.id,
+        platformLanguage,
+        isTouch: detectTouchSupport()
+      }
+    );
 
     this.elements.settingMusic.checked = this.progress.settings.musicEnabled;
     this.elements.settingSfx.checked = this.progress.settings.sfxEnabled;
@@ -618,6 +602,8 @@ export class App {
     if (this.runFinalized) {
       return;
     }
+    // Lock early to prevent duplicate token grants on rapid repeated calls.
+    this.runFinalized = true;
     if (this.runNewBest) {
       this.progress.bestScore = Math.max(this.progress.bestScore, this.pendingBestScore);
     }
@@ -627,7 +613,6 @@ export class App {
     this.progress.tokens += this.runTokens;
     await this.saveProgress();
     this.updateMenuStats();
-    this.runFinalized = true;
   }
 
   private updateResultsHints(): void {
@@ -635,40 +620,57 @@ export class App {
       return;
     }
     const lang = this.progress.settings.language;
+    const continueEligibility = this.getContinueEligibility();
     const doubleEligibility = this.getDoubleEligibility();
-    const adsUnavailable = doubleEligibility.reason === "ads_unavailable";
+    const adsUnavailable =
+      continueEligibility.reason === "ads_unavailable" &&
+      doubleEligibility.reason === "ads_unavailable";
     const continueBtn = document.getElementById("btn-continue") as HTMLButtonElement | null;
     const doubleBtn = document.getElementById("btn-double") as HTMLButtonElement | null;
 
     if (continueBtn) {
-      continueBtn.hidden = true;
-      continueBtn.disabled = true;
+      continueBtn.hidden = adsUnavailable;
+      continueBtn.disabled = !continueEligibility.ok;
     }
     if (doubleBtn) {
       doubleBtn.hidden = adsUnavailable;
       doubleBtn.disabled = !doubleEligibility.ok;
     }
 
-    const hints: string[] = [];
+    const hints = new Set<string>();
     if (adsUnavailable) {
       this.elements.resultsHint.textContent = "";
       return;
     }
+    if (!continueEligibility.ok) {
+      if (continueEligibility.reason === "continue_cooldown") {
+        hints.add(t(lang, "hint.continue_cooldown"));
+      } else if (
+        continueEligibility.reason !== "rewarded_cooldown" &&
+        continueEligibility.reason !== "ads_unavailable"
+      ) {
+        hints.add(t(lang, "hint.continue_unavailable"));
+      }
+    }
     if (doubleEligibility.reason === "tokens_low") {
-      hints.push(t(lang, "hint.double_need_tokens", { count: 2 }));
+      hints.add(t(lang, "hint.double_need_tokens", { count: 2 }));
     }
-    const cooldownHint = this.getCooldownHint(doubleEligibility, lang);
+    const cooldownHint = this.getCooldownHint(continueEligibility, doubleEligibility, lang);
     if (cooldownHint) {
-      hints.push(cooldownHint);
+      hints.add(cooldownHint);
     }
-    this.elements.resultsHint.textContent = hints.join(" - ");
+    this.elements.resultsHint.textContent = Array.from(hints).join(" - ");
   }
 
   private getCooldownHint(
+    continueEligibility: { ok: boolean; reason?: string },
     doubleEligibility: { ok: boolean; reason?: string },
     lang: Language
   ): string | null {
-    if (doubleEligibility.reason === "rewarded_cooldown") {
+    if (
+      continueEligibility.reason === "rewarded_cooldown" ||
+      doubleEligibility.reason === "rewarded_cooldown"
+    ) {
       return t(lang, "hint.rewarded_cooldown");
     }
     return null;
@@ -726,6 +728,9 @@ export class App {
       this.audio.startMusic();
       this.platform.gameplayStart();
     });
+    if (this.activeScreen === "results") {
+      this.updateResultsHints();
+    }
   }
 
   private async tryDoubleTokens(): Promise<void> {
@@ -751,6 +756,9 @@ export class App {
       this.updateResults();
       this.updateResultsHints();
     });
+    if (this.activeScreen === "results") {
+      this.updateResultsHints();
+    }
   }
 
   private requestMidgameAd(): void {
@@ -1072,21 +1080,20 @@ export class App {
       parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
 
     const availableWidth = Math.max(viewportWidth - horizontalPadding, 0);
-    const availableHeight = Math.max(viewportHeight - hudHeight - verticalPadding, 0);
-    if (availableWidth <= 0 || availableHeight <= 0) {
+    const availableHeightBelowHud = Math.max(viewportHeight - hudHeight - verticalPadding, 0);
+    const availableHeightFull = Math.max(viewportHeight - verticalPadding, 0);
+    if (availableWidth <= 0 || availableHeightFull <= 0) {
       return;
     }
 
     const requiredArea = viewportWidth * viewportHeight * 0.7;
-    const targetSide = Math.sqrt(requiredArea);
-    const baseSide = Math.min(availableWidth, availableHeight);
-    const side = Math.min(targetSide, baseSide);
-    if (side <= 0) {
-      return;
-    }
+    const belowHudArea = availableWidth * availableHeightBelowHud;
 
-    canvas.style.width = `${Math.round(side)}px`;
-    canvas.style.height = `${Math.round(side)}px`;
+    const targetWidth = availableWidth;
+    const targetHeight = belowHudArea >= requiredArea ? availableHeightBelowHud : availableHeightFull;
+
+    canvas.style.width = `${Math.round(targetWidth)}px`;
+    canvas.style.height = `${Math.round(targetHeight)}px`;
   }
 
   private loop(time: number): void {
@@ -1194,20 +1201,4 @@ export class App {
     }
   }
 
-  private defaultProgress(): ProgressState {
-    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-    return {
-      bestScore: 0,
-      tokens: 0,
-      themesUnlocked: ["lume"],
-      runsCount: 0,
-      settings: {
-        sfxEnabled: true,
-        musicEnabled: true,
-        tapToPlace: isTouch,
-        themeId: "lume",
-        language: "en"
-      }
-    };
-  }
 }

@@ -1,4 +1,4 @@
-Ты — автономный AI Software Engineer + Tech Lead + QA для разработки браузерной игры под платформу CrazyGames.
+﻿Ты — автономный AI Software Engineer + Tech Lead + QA для разработки браузерной игры под платформу CrazyGames.
 Твоя цель — максимально самостоятельно спроектировать и реализовать игру:
 
 Название: “LumeLines: Daily Blocks”
@@ -104,7 +104,7 @@
 - README:
   - Как запустить локально
   - Как собрать билд для CrazyGames (папка dist)
-  - Как включить/выключить SDK mock (VITE_USE_CRAZYGAMES_MOCK)
+  - Как включить/выключить SDK mock (VITE_USE_PLATFORM_MOCK)
   - Список файлов для загрузки на CrazyGames
 - ADR (Architecture Decision Record) на 1 страницу: почему выбран движок/архитектура.
 - CHANGELOG: краткие изменения по версиям.
@@ -159,3 +159,4 @@
   как переключить на реальный SDK на CrazyGames.
 
 Начинай с Milestone A и веди “DEVLOG.md” — по записи на каждый рабочий шаг (что сделал, что осталось, какие риски/долги).
+

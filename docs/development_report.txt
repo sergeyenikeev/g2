@@ -26,9 +26,11 @@
   - GameSession: состояние партии и переходы.
   - ScreenManager/Toast/DebugOverlay: экраны, уведомления, debug-инфо.
   - AudioManager: воспроизведение музыки и SFX с отдельными настройками.
-- src/services: интеграции.
-  - crazygames: SDK calls (loading, gameplay, ads, adblock, happytime).
-  - storage: Data Module с fallback на localStorage.
+- src/platform: PlatformBridge + платформенные адаптеры.
+  - bridge/factory/env: выбор платформы, общие кулдауны, storage fallback, оркестрация SDK.
+  - adapters: CrazyGames, Poki, Yandex, VK Play, Rustore, generic/mock.
+- src/services:
+  - storage: сериализация/десериализация и безопасный доступ к хранилищу.
 - src/utils: логирование (INFO/WARN/ERROR) и форматирование.
 
 4) Игровой цикл
@@ -102,7 +104,7 @@
 
 16) Сборка и запуск
 - Скрипты: dev, build, test, lint.
-- VITE_USE_CRAZYGAMES_MOCK управляет использованием mock SDK.
+- VITE_USE_PLATFORM_MOCK управляет использованием mock SDK.
 - Сборка в dist/ (готова для загрузки на CrazyGames).
 
 17) Промо-материалы
@@ -115,3 +117,4 @@
 - Осталось: smoke-тест на реальном CrazyGames SDK, финальные промо-изображения.
 
 Конец отчета.
+

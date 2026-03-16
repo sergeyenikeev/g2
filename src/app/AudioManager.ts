@@ -67,6 +67,28 @@ export class AudioManager {
     }
   }
 
+  async suspend(): Promise<void> {
+    const ctx = this.context;
+    if (!ctx || ctx.state === "suspended") {
+      return;
+    }
+    try {
+      await ctx.suspend();
+    } catch {
+    }
+  }
+
+  async resume(): Promise<void> {
+    const ctx = this.context;
+    if (!ctx || ctx.state !== "suspended") {
+      return;
+    }
+    try {
+      await ctx.resume();
+    } catch {
+    }
+  }
+
   setMuted(value: boolean): void {
     this.muted = value;
     if (this.masterGain) {

@@ -1,5 +1,7 @@
-﻿import "./styles.css";
+import "./styles.css";
 import { App } from "./app/App";
+import { createPlatform } from "./platform/factory";
 
-const app = new App();
+const platform = createPlatform();
+const app = new App(platform);
 app.init();

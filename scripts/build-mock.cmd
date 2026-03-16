@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "ROOT=C:\Users\s\Documents\g2"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 cd /d "%ROOT%" || call :fail "Failed to cd to %ROOT%."
 
 set "VITE_USE_PLATFORM_MOCK=1"

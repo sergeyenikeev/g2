@@ -1,4 +1,4 @@
-One-page GDD (CrazyGames) — “BlockBuster Puzzle: Daily” (референс: BlockBuster Puzzle на CrazyGames, но с daily seed + комбо-метром)
+﻿One-page GDD (CrazyGames) — “BlockBuster Puzzle: Daily” (референс: BlockBuster Puzzle на CrazyGames, но с daily seed + комбо-метром)
 0) Цель и ограничения
 
 Цель: сделать “вечнозелёный” block-puzzle для органики CrazyGames: быстрое понимание, короткая сессия, высокая повторяемость, без серверов, без постоянного контента/ивентов.

@@ -43,11 +43,7 @@ const callBridge = async <TArgs extends unknown[], TResult>(
   if (!fn) {
     return undefined as Awaited<TResult>;
   }
-  try {
-    return await fn(...args);
-  } catch (error) {
-    throw error;
-  }
+  return await fn(...args);
 };
 
 export const createRustoreAdapter = (): PlatformAdapter => {
@@ -81,7 +77,7 @@ export const createRustoreAdapter = (): PlatformAdapter => {
         return normalized.success
           ? { shown: true }
           : { shown: false, reason: normalized.reason ?? "sdk_error" };
-      } catch (error) {
+      } catch {
         return { shown: false, reason: "sdk_error" };
       } finally {
         ctx.resume();

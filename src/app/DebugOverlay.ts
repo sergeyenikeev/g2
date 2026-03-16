@@ -5,6 +5,10 @@ export interface DebugStats {
   seed: string;
   combo: number;
   nextPieces: Array<ActivePiece | null>;
+  platform: string;
+  mode: string;
+  rewardedCooldownMs: number;
+  continueCooldownMs: number;
 }
 
 export class DebugOverlay {
@@ -18,8 +22,14 @@ export class DebugOverlay {
     const pieceIds = stats.nextPieces
       .map((piece) => piece?.def.id ?? "-")
       .join(", ");
-    this.element.textContent = `FPS: ${stats.fps.toFixed(0)}\nSeed: ${stats.seed}\nCombo: x${stats.combo.toFixed(
+    const rewardedSeconds = Math.ceil(stats.rewardedCooldownMs / 1000);
+    const continueSeconds = Math.ceil(stats.continueCooldownMs / 1000);
+    const rewardedLabel = rewardedSeconds > 0 ? `${rewardedSeconds}s` : "ready";
+    const continueLabel = continueSeconds > 0 ? `${continueSeconds}s` : "ready";
+    this.element.textContent = `Platform: ${stats.platform}\nMode: ${stats.mode}\nFPS: ${stats.fps.toFixed(
+      0
+    )}\nSeed: ${stats.seed}\nCombo: x${stats.combo.toFixed(
       2
-    )}\nNext: ${pieceIds}`;
+    )}\nRewarded CD: ${rewardedLabel}\nContinue CD: ${continueLabel}\nNext: ${pieceIds}`;
   }
 }

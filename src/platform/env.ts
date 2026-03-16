@@ -1,27 +1,35 @@
-import { PlatformId } from "./bridge";
+import type { PlatformId } from "./bridge";
+
+const getProcessEnv = (): Record<string, string | undefined> | undefined => {
+  const processLike = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process;
+  return processLike?.env;
+};
 
 const isTestEnv = (): boolean => {
   const metaEnv = (import.meta as { env?: Record<string, unknown> }).env;
   if (typeof metaEnv?.VITEST === "boolean") {
     return metaEnv.VITEST;
   }
-  if (typeof process !== "undefined" && process.env) {
-    return process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+  const processEnv = getProcessEnv();
+  if (processEnv) {
+    return processEnv.VITEST === "true" || processEnv.NODE_ENV === "test";
   }
   return false;
 };
 
 const getEnvValue = (key: string): string | undefined => {
+  const processEnv = getProcessEnv();
   if (isTestEnv()) {
-    return typeof process !== "undefined" ? process.env?.[key] : undefined;
+    return processEnv?.[key];
   }
   const metaEnv = (import.meta as { env?: Record<string, string> }).env;
   const value = metaEnv?.[key];
   if (value && value.length > 0) {
     return value;
   }
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
-    return process.env[key];
+  if (processEnv?.[key]) {
+    return processEnv[key];
   }
   return undefined;
 };
@@ -50,5 +58,6 @@ export const resolveUseMock = (): boolean => {
   if (typeof metaEnv?.DEV === "boolean") {
     return metaEnv.DEV;
   }
-  return typeof process !== "undefined" ? process.env.NODE_ENV !== "production" : false;
+  const processEnv = getProcessEnv();
+  return processEnv ? processEnv.NODE_ENV !== "production" : false;
 };

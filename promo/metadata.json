@@ -1,6 +1,19 @@
 ﻿{
   "title": "LumeLines: Daily Blocks",
-  "tagline": "Place. Clear. Glow — every day.",
+  "tagline": "Place. Clear. Glow - every day.",
   "description": "LumeLines: Daily Blocks is a relaxing block puzzle where every placement builds soft glowing lines and satisfying combos. Drop three shapes, clear rows and columns, and watch your combo multiplier climb.\n\nPlay the Daily Challenge for a seeded puzzle that is the same for everyone, then spend your tokens to unlock new glow themes.",
+  "yandex": {
+    "short_description_ru": "Расслабляющая головоломка: ставьте фигуры, очищайте линии, собирайте комбо.",
+    "short_description_en": "Relaxing block puzzle: place shapes, clear lines, build combos.",
+    "description_ru": "Размещайте три фигуры на поле 10x10, очищайте строки и столбцы, разгоняйте комбо и зарабатывайте токены. Ежедневный режим дает одинаковый сид для всех игроков. Токены тратятся на новые светящиеся темы. Игра офлайн, прогресс сохраняется локально.",
+    "description_en": "Place three shapes on a 10x10 board, clear rows and columns, build combos, and earn tokens. Daily Challenge uses the same seed for everyone. Spend tokens on new glowing themes. Offline play with local saves.",
+    "seo_description_ru": "LumeLines: Daily Blocks - расслабляющая головоломка с блоками. Ставьте фигуры, очищайте линии, собирайте комбо и открывайте темы.",
+    "seo_description_en": "LumeLines: Daily Blocks is a relaxing block puzzle. Place shapes, clear lines, build combos, and unlock new themes.",
+    "about_ru": "Медитативная блок-головоломка с мягким свечением и быстрыми партиями. Размещайте три фигуры, очищайте строки и столбцы, растите множитель комбо и зарабатывайте токены. Ежедневный режим использует общий сид для всех игроков. Токены тратятся на новые светящиеся темы. Игра работает офлайн, прогресс сохраняется локально.",
+    "about_en": "A calm block puzzle with soft glow and quick runs. Place three shapes, clear rows and columns, build combo multiplier, and earn tokens. Daily Challenge uses a shared seed for all players. Spend tokens on new glowing themes. Offline play with local saves.",
+    "how_to_play_ru": "Перетаскивайте фигуры на поле 10x10 (или ставьте касанием в режиме Tap to place). Соберите линии по горизонтали или вертикали, чтобы очистить их и получить очки. Чем больше линий за ход, тем выше комбо. Когда фигуры больше не помещаются, раунд заканчивается. Наградная реклама доступна по желанию: она позволяет продолжить раунд с новыми фигурами (Continue), удвоить только что заработанные токены (Double Tokens) или мгновенно получить +2 токена в меню, а токены тратятся на новые светящиеся темы.",
+    "how_to_play_en": "Drag shapes onto the 10x10 board (or tap to place in Tap to place mode). Clear full rows or columns to score points. The more lines you clear per move, the higher the combo. When no shapes can fit, the run ends. Rewarded ads are optional: watch one to continue with fresh pieces (Continue), double the tokens you just earned (Double Tokens), or grab a quick +2 tokens from the menu, then spend tokens on new glowing themes.",
+    "age_rating": "6+"
+  },
   "tags": ["block", "puzzle", "daily", "relaxing", "casual", "grid", "lines"]
 }
