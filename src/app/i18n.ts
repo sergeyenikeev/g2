@@ -1,4 +1,4 @@
-import type { PlatformId } from "../platform/bridge";
+﻿import type { PlatformId } from "../platform/bridge";
 
 export type Language = "en" | "ru";
 
@@ -55,14 +55,20 @@ const DICTS: Record<Language, Dictionary> = {
     "theme.action.buy": "Buy ({price})",
     "theme.action.need": "Need {price}",
     "hint.continue_unavailable": "Continue unavailable",
+    "hint.continue_need_score": "Need {score} score to continue",
     "hint.double_need_tokens": "Need at least {count} tokens to double",
     "hint.continue_cooldown": "Continue cooldown",
     "hint.rewarded_cooldown": "Rewarded cooldown",
+    "hint.rewarded_ready_in": "Reward available in {time}",
+    "hint.continue_ready_in": "Continue available in {time}",
+    "hint.reward_already_used": "This reward is already used in this run",
     "hint.ads_unavailable": "Ads are not available on this platform.",
     "toast.continue_unavailable": "Continue unavailable",
     "toast.double_unavailable": "Double tokens unavailable",
     "toast.rewarded_cooldown": "Rewarded cooldown",
     "toast.continue_cooldown": "Continue cooldown",
+    "toast.continue_need_score": "Need {score} score to continue",
+    "toast.reward_already_used": "This reward is already used",
     "toast.ad_unavailable": "Ad unavailable",
     "toast.rewarded_tokens": "Reward: +{count} tokens",
     "toast.cant_place": "Can't place there"
@@ -117,14 +123,20 @@ const DICTS: Record<Language, Dictionary> = {
     "theme.action.buy": "Купить ({price})",
     "theme.action.need": "Нужно {price}",
     "hint.continue_unavailable": "Продолжение недоступно",
+    "hint.continue_need_score": "Нужно {score} очков для продолжения",
     "hint.double_need_tokens": "Нужно минимум {count} токенов для удвоения",
     "hint.continue_cooldown": "Кулдаун продолжения",
     "hint.rewarded_cooldown": "Кулдаун наградной рекламы",
+    "hint.rewarded_ready_in": "Награда будет доступна через {time}",
+    "hint.continue_ready_in": "Продолжение будет доступно через {time}",
+    "hint.reward_already_used": "Эта награда уже использована в текущем раунде",
     "hint.ads_unavailable": "Реклама недоступна на этой платформе.",
     "toast.continue_unavailable": "Продолжение недоступно",
     "toast.double_unavailable": "Удвоение токенов недоступно",
     "toast.rewarded_cooldown": "Кулдаун наградной рекламы",
     "toast.continue_cooldown": "Кулдаун продолжения",
+    "toast.continue_need_score": "Нужно {score} очков для продолжения",
+    "toast.reward_already_used": "Эта награда уже использована",
     "toast.ad_unavailable": "Реклама недоступна",
     "toast.rewarded_tokens": "Награда: +{count} токенов",
     "toast.cant_place": "Нельзя поставить сюда"

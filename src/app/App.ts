@@ -31,6 +31,8 @@ type ScreenId =
   | "settings";
 
 const MENU_REWARD_TOKENS = 2;
+const CONTINUE_MIN_SCORE = 800;
+const UI_REFRESH_INTERVAL_MS = 500;
 
 export class App {
   private screens!: ScreenManager;
@@ -77,6 +79,7 @@ export class App {
   private activePointerId: number | null = null;
   private selectedPieceId: string | null = null;
   private fpsSample = { last: 0, frames: 0, fps: 0 };
+  private lastUiRefreshAt = 0;
 
   private elements = {
     canvas: document.getElementById("game-canvas") as HTMLCanvasElement,
@@ -85,6 +88,7 @@ export class App {
     menuBest: document.getElementById("menu-best") as HTMLElement,
     menuTokens: document.getElementById("menu-tokens") as HTMLElement,
     menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
+    menuRewardHint: document.getElementById("menu-reward-hint") as HTMLElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
@@ -310,6 +314,11 @@ export class App {
   private handleVisibilityChange(forceHidden?: boolean): void {
     const hidden = forceHidden ?? document.hidden;
     if (hidden) {
+      if (this.activeScreen === "game") {
+        const keepSelection =
+          this.progress.settings.tapToPlace && this.selectedPieceId !== null && this.dragging === null;
+        this.resetPointerInteraction({ clearSelection: !keepSelection });
+      }
       void this.audio.suspend();
       this.audio.setMuted(true);
       this.audio.stopMusic();
@@ -508,11 +517,28 @@ export class App {
     if (!this.isRewardedAvailable()) {
       this.elements.menuReward.hidden = true;
       this.elements.menuReward.disabled = true;
+      this.elements.menuReward.title = "";
+      this.elements.menuRewardHint.hidden = true;
+      this.elements.menuRewardHint.textContent = "";
       return;
     }
+    const lang = this.progress.settings.language;
     const eligibility = this.getMenuRewardEligibility();
     this.elements.menuReward.hidden = false;
     this.elements.menuReward.disabled = !eligibility.ok;
+    let hint = "";
+    if (eligibility.reason === "rewarded_cooldown") {
+      const cooldowns = this.platform.getCooldownStatus();
+      const remainingMs = Math.max(0, cooldowns.rewardedAvailableAt - Date.now());
+      hint = t(lang, "hint.rewarded_ready_in", {
+        time: this.formatDuration(remainingMs)
+      });
+    } else if (eligibility.reason === "ads_unavailable") {
+      hint = t(lang, "hint.ads_unavailable");
+    }
+    this.elements.menuReward.title = hint;
+    this.elements.menuRewardHint.textContent = hint;
+    this.elements.menuRewardHint.hidden = hint.length === 0;
   }
 
   private getContinueEligibility(): { ok: boolean; reason?: string } {
@@ -528,7 +554,7 @@ export class App {
     if (this.session.continueUsed) {
       return { ok: false, reason: "already_used" };
     }
-    if (this.session.state.score < 800) {
+    if (this.session.state.score < CONTINUE_MIN_SCORE) {
       return { ok: false, reason: "score_low" };
     }
     const cooldown = this.platform.canShowRewardedNow("continue");
@@ -658,7 +684,17 @@ export class App {
     }
     if (!continueEligibility.ok) {
       if (continueEligibility.reason === "continue_cooldown") {
-        hints.add(t(lang, "hint.continue_cooldown"));
+        const cooldowns = this.platform.getCooldownStatus();
+        const remainingMs = Math.max(0, cooldowns.continueAvailableAt - Date.now());
+        hints.add(
+          t(lang, "hint.continue_ready_in", {
+            time: this.formatDuration(remainingMs)
+          })
+        );
+      } else if (continueEligibility.reason === "score_low") {
+        hints.add(t(lang, "hint.continue_need_score", { score: CONTINUE_MIN_SCORE }));
+      } else if (continueEligibility.reason === "already_used") {
+        hints.add(t(lang, "hint.reward_already_used"));
       } else if (
         continueEligibility.reason !== "rewarded_cooldown" &&
         continueEligibility.reason !== "ads_unavailable"
@@ -668,6 +704,8 @@ export class App {
     }
     if (doubleEligibility.reason === "tokens_low") {
       hints.add(t(lang, "hint.double_need_tokens", { count: 2 }));
+    } else if (doubleEligibility.reason === "already_used") {
+      hints.add(t(lang, "hint.reward_already_used"));
     }
     const cooldownHint = this.getCooldownHint(continueEligibility, doubleEligibility, lang);
     if (cooldownHint) {
@@ -681,11 +719,15 @@ export class App {
     doubleEligibility: { ok: boolean; reason?: string },
     lang: Language
   ): string | null {
+    const cooldowns = this.platform.getCooldownStatus();
+    const remainingMs = Math.max(0, cooldowns.rewardedAvailableAt - Date.now());
     if (
       continueEligibility.reason === "rewarded_cooldown" ||
       doubleEligibility.reason === "rewarded_cooldown"
     ) {
-      return t(lang, "hint.rewarded_cooldown");
+      return t(lang, "hint.rewarded_ready_in", {
+        time: this.formatDuration(remainingMs)
+      });
     }
     return null;
   }
@@ -728,6 +770,10 @@ export class App {
       const lang = this.progress.settings.language;
       if (eligibility.reason === "ads_unavailable") {
         this.toast.show(t(lang, "toast.ad_unavailable"));
+      } else if (eligibility.reason === "score_low") {
+        this.toast.show(t(lang, "toast.continue_need_score", { score: CONTINUE_MIN_SCORE }));
+      } else if (eligibility.reason === "already_used") {
+        this.toast.show(t(lang, "toast.reward_already_used"));
       } else {
         this.toast.show(t(lang, "toast.continue_unavailable"));
       }
@@ -769,6 +815,8 @@ export class App {
       const lang = this.progress.settings.language;
       if (eligibility.reason === "ads_unavailable") {
         this.toast.show(t(lang, "toast.ad_unavailable"));
+      } else if (eligibility.reason === "already_used") {
+        this.toast.show(t(lang, "toast.reward_already_used"));
       } else {
         this.toast.show(t(lang, "toast.double_unavailable"));
       }
@@ -1141,6 +1189,7 @@ export class App {
     if (this.renderer) {
       this.renderer.render(time);
     }
+    this.refreshTimeSensitiveUi(time);
     this.updateDebug(time);
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -1180,6 +1229,26 @@ export class App {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+  }
+
+  private refreshTimeSensitiveUi(time: number): void {
+    if (time - this.lastUiRefreshAt < UI_REFRESH_INTERVAL_MS) {
+      return;
+    }
+    this.lastUiRefreshAt = time;
+    if (this.activeScreen === "menu") {
+      this.updateMenuRewardState();
+    }
+    if (this.activeScreen === "results") {
+      this.updateResultsHints();
+    }
+  }
+
+  private formatDuration(ms: number): string {
+    const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
   private resetPointerInteraction(options?: { clearSelection?: boolean }): void {

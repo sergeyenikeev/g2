@@ -3,6 +3,7 @@ type BufferKey = "place" | "clear" | "combo" | "fail" | "button" | "music";
 type UrlMap = Record<BufferKey, string>;
 
 export class AudioManager {
+  private unlocked = false;
   private muted = false;
   private sfxEnabled = true;
   private musicEnabled = true;
@@ -54,6 +55,7 @@ export class AudioManager {
   }
 
   unlock(): void {
+    this.unlocked = true;
     const ctx = this.ensureContext();
     if (!ctx) {
       return;
@@ -116,8 +118,15 @@ export class AudioManager {
   }
 
   startMusic(): void {
+    if (!this.musicEnabled) {
+      return;
+    }
+    if (!this.unlocked) {
+      this.pendingMusicStart = true;
+      return;
+    }
     const ctx = this.ensureContext();
-    if (!ctx || !this.musicEnabled) {
+    if (!ctx) {
       return;
     }
     if (this.musicSource) {
@@ -212,6 +221,9 @@ export class AudioManager {
   private ensureContext(): AudioContext | null {
     if (this.context) {
       return this.context;
+    }
+    if (!this.unlocked) {
+      return null;
     }
     const AudioCtor =
       window.AudioContext ||
