@@ -3,13 +3,9 @@ import process from "node:process";
 
 const PLATFORMS = [
   "generic",
-  "crazygames",
-  "poki",
   "yandex",
   "vkplay",
-  "rustore",
-  "newgrounds",
-  "itchio"
+  "rustore"
 ];
 
 const args = process.argv.slice(2);

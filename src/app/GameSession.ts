@@ -2,7 +2,7 @@
 import { applyMove, createEmptyState, GameState, MoveResult } from "../core/game";
 import { PieceGenerator } from "../core/generator";
 import { getPieceById } from "../core/pieces";
-import { ActivePiece, GameMode, PieceDef, Point } from "../core/types";
+import { ActivePiece, Board, GameMode, PieceDef, Point } from "../core/types";
 import { Rng } from "../core/rng";
 
 export class GameSession {
@@ -34,10 +34,19 @@ export class GameSession {
     }
     this.state = result.state;
     this.pieces[slotIndex] = null;
-    if (this.pieces.every((slot) => slot === null)) {
+    if (this.state.mode !== "tutorial" && this.pieces.every((slot) => slot === null)) {
       this.pieces = this.generator.nextSet(this.state.board, this.state.moves);
     }
     return result;
+  }
+
+  setBoardAndPieces(board: Board, pieces: Array<PieceDef | null>): void {
+    this.state = {
+      ...this.state,
+      board,
+      combo: 1
+    };
+    this.pieces = pieces.map((piece) => (piece ? this.wrapPiece(piece, "t") : null));
   }
 
   setContinuePieces(): void {
@@ -64,8 +73,8 @@ export class GameSession {
     );
   }
 
-  private wrapPiece(def: PieceDef): ActivePiece {
-    const instanceId = `c_${this.idCounter}`;
+  private wrapPiece(def: PieceDef, prefix = "c"): ActivePiece {
+    const instanceId = `${prefix}_${this.idCounter}`;
     this.idCounter += 1;
     return { instanceId, def };
   }

@@ -10,7 +10,7 @@
 3. `npm ci`
 4. `npm run lint`
 5. `npm run test`
-6. `npm run build:generic` или матрица платформенных сборок.
+6. `npm run build:generic` или матрица поддерживаемых платформенных сборок (`generic`, `yandex`, `vkplay`, `rustore`).
 7. Публикация `dist/<target>` как artifact.
 
 ## Пример GitHub Actions
@@ -38,6 +38,6 @@ jobs:
 ```
 
 ## Рекомендации
-- Для релизов добавить job-матрицу `build:<platform>`.
+- Для релизов добавить job-матрицу только для поддерживаемых `build:<platform>`.
 - Падение `lint`, `test` или `build` должно блокировать merge и release.
 - Изменения в процессе доставки фиксировать в `CHANGELOG.md`.

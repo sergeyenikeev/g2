@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("generic","crazygames","poki","yandex","vkplay","rustore","newgrounds","itchio")]
+  [ValidateSet("generic","yandex","vkplay","rustore")]
   [string]$Platform = "generic",
   [switch]$All
 )
@@ -10,7 +10,7 @@ Set-Location $root
 
 $env:VITE_USE_PLATFORM_MOCK = "0"
 
-$platforms = @("generic","crazygames","poki","yandex","vkplay","rustore","newgrounds","itchio")
+$platforms = @("generic","yandex","vkplay","rustore")
 $targets = if ($All) { $platforms } else { @($Platform) }
 
 foreach ($target in $targets) {

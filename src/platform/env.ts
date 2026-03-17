@@ -37,8 +37,6 @@ const getEnvValue = (key: string): string | undefined => {
 export const resolvePlatformId = (): PlatformId => {
   const raw = (getEnvValue("VITE_PLATFORM") ?? "generic").toLowerCase();
   switch (raw) {
-    case "crazygames":
-    case "poki":
     case "yandex":
     case "vkplay":
     case "rustore":

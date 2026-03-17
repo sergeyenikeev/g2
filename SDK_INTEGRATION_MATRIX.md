@@ -1,17 +1,18 @@
 # SDK Integration Matrix
 
-| Capability | CrazyGames | Poki | Yandex | VK Play | Generic | Rustore |
-| --- | --- | --- | --- | --- | --- | --- |
-| init | implemented | manual steps needed | manual steps needed | manual steps needed | implemented | manual steps needed |
-| loading | implemented | manual steps needed | manual steps needed | stub | stub | stub |
-| gameplay | implemented | manual steps needed | manual steps needed | stub | stub | stub |
-| ads | implemented | manual steps needed | manual steps needed | manual steps needed | not supported | manual steps needed |
-| storage | implemented | not supported | manual steps needed | not supported | implemented | manual steps needed |
-| analytics | stub | stub | stub | stub | implemented | stub |
-| happytime | implemented | not supported | not supported | not supported | not supported | stub |
-| adblock | implemented | not supported | not supported | not supported | not supported | not supported |
+| Capability | Generic | Yandex | VK Play | Rustore |
+| --- | --- | --- | --- | --- |
+| init | implemented | manual steps needed | manual steps needed | manual steps needed |
+| loading | stub | manual steps needed | stub | stub |
+| gameplay | stub | manual steps needed | stub | stub |
+| ads | not supported | manual steps needed | manual steps needed | manual steps needed |
+| storage | implemented | manual steps needed | not supported | manual steps needed |
+| analytics | implemented | stub | stub | stub |
+| happytime | not supported | not supported | not supported | stub |
+| adblock | not supported | not supported | not supported | not supported |
 
 Notes:
-- "manual steps needed" indicates SDK script + portal-specific initialization required (see `PORTING_GUIDE.md`).
-- "stub" means a safe no-op/logging implementation without real SDK support.
-- The Rustore column represents the Android WebView build described in `docs/rustore_android.md` with `window.RustoreBridge` bridging (see `src/platform/rustore/adapter.ts`).
+
+- "manual steps needed" means SDK script and portal/wrapper-specific initialization are still required.
+- "stub" means a safe no-op/logging implementation without a real SDK binding.
+- Rustore refers to the Android WebView build described in `docs/rustore_android.md`.

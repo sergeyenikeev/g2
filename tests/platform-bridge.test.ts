@@ -6,7 +6,7 @@ import {
 } from "../src/platform/bridge";
 import { createPlatform } from "../src/platform/factory";
 import { createGenericAdapter } from "../src/platform/generic/adapter";
-import { createPokiAdapter } from "../src/platform/poki/adapter";
+import { createVkPlayAdapter } from "../src/platform/vkplay/adapter";
 import { CONTINUE_COOLDOWN_MS, REWARDED_COOLDOWN_MS } from "../src/core/constants";
 
 const originalEnv = { ...process.env };
@@ -52,14 +52,21 @@ describe("platform factory", () => {
   });
 
   it("uses VITE_PLATFORM when set", () => {
-    process.env.VITE_PLATFORM = "poki";
+    process.env.VITE_PLATFORM = "vkplay";
     process.env.VITE_USE_PLATFORM_MOCK = "1";
     const platform = createPlatform();
-    expect(platform.id).toBe("poki");
+    expect(platform.id).toBe("vkplay");
   });
 
   it("normalizes unknown platform to generic", () => {
     process.env.VITE_PLATFORM = "unknown";
+    process.env.VITE_USE_PLATFORM_MOCK = "1";
+    const platform = createPlatform();
+    expect(platform.id).toBe("generic");
+  });
+
+  it("falls back to generic for retired legacy targets", () => {
+    process.env.VITE_PLATFORM = "crazygames";
     process.env.VITE_USE_PLATFORM_MOCK = "1";
     const platform = createPlatform();
     expect(platform.id).toBe("generic");
@@ -116,7 +123,7 @@ describe("platform cooldowns", () => {
 
 describe("sdk missing behavior", () => {
   it("returns shown:false and does not grant reward", async () => {
-    const bridge = createPlatformBridge(createPokiAdapter());
+    const bridge = createPlatformBridge(createVkPlayAdapter());
     let rewarded = false;
     const result = await bridge.showAd("rewarded", {
       pause: () => {},

@@ -21,4 +21,4 @@ export interface ActivePiece {
   def: PieceDef;
 }
 
-export type GameMode = "play" | "daily";
+export type GameMode = "play" | "daily" | "tutorial";

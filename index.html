@@ -52,6 +52,7 @@
           </div>
           <div class="menu-grid">
             <button id="btn-play" class="btn primary" data-i18n="menu.play">Play</button>
+            <button id="btn-tutorial" class="btn" data-i18n="menu.tutorial">Tutorial</button>
             <button id="btn-daily" class="btn" data-i18n="menu.daily">Daily Challenge</button>
             <button
               id="btn-menu-reward"
@@ -107,6 +108,9 @@
             </div>
             <button id="btn-pause" class="btn ghost" data-i18n="hud.pause">Pause</button>
           </div>
+        </div>
+        <div class="game-hint-wrap">
+          <p id="game-tutorial-hint" class="game-hint" hidden role="status" aria-live="polite"></p>
         </div>
         <div class="canvas-wrap">
           <canvas id="game-canvas" width="900" height="1200"></canvas>
@@ -215,18 +219,8 @@
         }
         const script = document.createElement("script");
         script.async = true;
-        if (platform === "crazygames") {
-          script.src = "https://sdk.crazygames.com/crazygames-sdk-v3.js";
-          document.head.appendChild(script);
-          return;
-        }
         if (platform === "yandex") {
           script.src = "https://yandex.ru/games/sdk/v2";
-          document.head.appendChild(script);
-          return;
-        }
-        if (platform === "poki") {
-          script.src = "https://game-cdn.poki.com/scripts/v2/poki-sdk.js";
           document.head.appendChild(script);
           return;
         }

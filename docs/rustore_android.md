@@ -1,6 +1,6 @@
 # Rustore / Android Packaging
 
-This document summarizes the new Android target used for Rustore and how it keeps the existing web builds (CrazyGames, Poki, Yandex, VK Play, etc.) intact while adding an Android-compatible monetization surface.
+This document summarizes the Android target used for Rustore and how it complements the currently supported web builds (`generic`, `yandex`, `vkplay`) with an Android-compatible monetization surface.
 
 ## Build workflow
 
@@ -40,4 +40,4 @@ The adapter calls `track` when analytics events fire, `storage*` to mirror `best
 - Provide Rustore with the same metadata stored in `promo/metadata.json` and matching screenshots to keep descriptions consistent across platforms.
 - Submit the Android package (`.apk` / `.aab`) built from the WebView wrapper. Ensure orientation is locked to portrait, input/touch handling matches the browser builds, and the WebView can access local assets.
 
-By keeping the build pipeline intact and only adding this Rustore wrapper, CrazyGames/Poki/Yandex/VK Play builds continue to work unmodified while Android players get a monetized entry point that coordinates through the same `PlatformBridge`.
+By keeping the build pipeline intact and only adding this Rustore wrapper, the supported browser targets and the Android shell can share the same `PlatformBridge` flow for ads, saves, and analytics.

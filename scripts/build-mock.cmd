@@ -5,7 +5,7 @@ cd /d "%ROOT%" || call :fail "Failed to cd to %ROOT%."
 
 set "VITE_USE_PLATFORM_MOCK=1"
 
-for %%P in (generic crazygames poki yandex vkplay rustore newgrounds itchio) do (
+for %%P in (generic yandex vkplay rustore) do (
   echo === Building %%P [mock] ===
   call npm run build:%%P
   if errorlevel 1 call :fail "Build %%P [mock] failed."

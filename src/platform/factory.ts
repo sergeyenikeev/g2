@@ -1,7 +1,5 @@
 import { createPlatformBridge, PlatformBridge, PlatformId } from "./bridge";
 import { resolvePlatformId, resolveUseMock } from "./env";
-import { createCrazyGamesAdapter } from "./crazygames/adapter";
-import { createPokiAdapter } from "./poki/adapter";
 import { createYandexAdapter } from "./yandex/adapter";
 import { createVkPlayAdapter } from "./vkplay/adapter";
 import { createGenericAdapter } from "./generic/adapter";
@@ -11,10 +9,6 @@ import { logger } from "../utils/logger";
 
 const createAdapter = (platform: PlatformId) => {
   switch (platform) {
-    case "crazygames":
-      return createCrazyGamesAdapter();
-    case "poki":
-      return createPokiAdapter();
     case "yandex":
       return createYandexAdapter();
     case "vkplay":

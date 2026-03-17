@@ -29,6 +29,7 @@ export interface RendererState {
   dragging?: { pieceId: string; x: number; y: number };
   selectedPieceId?: string | null;
   ghost?: { piece: PieceDef; origin: Point; valid: boolean };
+  guideGhost?: { piece: PieceDef; origin: Point };
   flashLines?: FlashLines;
 }
 
@@ -73,6 +74,7 @@ export class Renderer {
     this.drawBoard();
     this.drawPlacedBlocks();
     this.drawFlashLines(now);
+    this.drawGuideGhost();
     this.drawGhostPlacement();
     this.drawPieces();
   }
@@ -196,6 +198,26 @@ export class Renderer {
       const x = boardRect.x + (ghost.origin.x + cell.x) * cellSize;
       const y = boardRect.y + (ghost.origin.y + cell.y) * cellSize;
       this.roundRect(x + 2, y + 2, cellSize - 4, cellSize - 4, 6, true, false);
+    }
+    this.ctx.restore();
+  }
+
+  private drawGuideGhost(): void {
+    const guideGhost = this.state.guideGhost;
+    if (!guideGhost) {
+      return;
+    }
+    const { cellSize, boardRect } = this.layout;
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.18;
+    this.ctx.fillStyle = this.theme.palette.highlight;
+    this.ctx.strokeStyle = this.theme.palette.highlight;
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([6, 4]);
+    for (const cell of guideGhost.piece.cells) {
+      const x = boardRect.x + (guideGhost.origin.x + cell.x) * cellSize;
+      const y = boardRect.y + (guideGhost.origin.y + cell.y) * cellSize;
+      this.roundRect(x + 3, y + 3, cellSize - 6, cellSize - 6, 6, true, true);
     }
     this.ctx.restore();
   }

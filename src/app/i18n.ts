@@ -11,6 +11,7 @@ const DICTS: Record<Language, Dictionary> = {
     tagline: "Place. Clear. Glow - every day.",
     "loading.status": "Loading...",
     "menu.play": "Play",
+    "menu.tutorial": "Tutorial",
     "menu.daily": "Daily Challenge",
     "menu.rewarded": "Watch Ad (Reward)",
     "menu.themes": "Themes",
@@ -28,6 +29,7 @@ const DICTS: Record<Language, Dictionary> = {
     "pause.settings": "Settings",
     "pause.menu": "Main Menu",
     "results.title": "Run Complete",
+    "results.title.tutorial": "Tutorial Complete",
     "results.score": "Score",
     "results.best": "Best",
     "results.tokens": "Tokens",
@@ -35,6 +37,7 @@ const DICTS: Record<Language, Dictionary> = {
     "results.double": "Double Tokens (Rewarded)",
     "results.play_again": "Play Again",
     "results.menu": "Main Menu",
+    "results.tutorial_hint": "Tutorial complete. Start Play or Daily for normal progression.",
     "themes.title": "Themes",
     "themes.back": "Back",
     "settings.title": "Settings",
@@ -63,6 +66,10 @@ const DICTS: Record<Language, Dictionary> = {
     "hint.continue_ready_in": "Continue available in {time}",
     "hint.reward_already_used": "This reward is already used in this run",
     "hint.ads_unavailable": "Ads are not available on this platform.",
+    "tutorial.progress": "Lesson {step}/{total}: {message}",
+    "tutorial.step1": "Drag the 3-block line into the highlighted gap to clear a row.",
+    "tutorial.step2": "Place the square into the guide to finish a column.",
+    "tutorial.step3": "Use the L-shape in the highlighted slot for a bigger clear.",
     "toast.continue_unavailable": "Continue unavailable",
     "toast.double_unavailable": "Double tokens unavailable",
     "toast.rewarded_cooldown": "Rewarded cooldown",
@@ -71,7 +78,9 @@ const DICTS: Record<Language, Dictionary> = {
     "toast.reward_already_used": "This reward is already used",
     "toast.ad_unavailable": "Ad unavailable",
     "toast.rewarded_tokens": "Reward: +{count} tokens",
-    "toast.cant_place": "Can't place there"
+    "toast.cant_place": "Can't place there",
+    "toast.tutorial_follow_hint": "Follow the highlighted placement to continue the tutorial.",
+    "toast.tutorial_step_complete": "Nice. Next lesson is ready."
   },
   ru: {
     "title.short": "LumeLines: Daily Blocks",
@@ -79,6 +88,7 @@ const DICTS: Record<Language, Dictionary> = {
     tagline: "Ставь. Очищай. Светись - каждый день.",
     "loading.status": "Загрузка...",
     "menu.play": "Играть",
+    "menu.tutorial": "Обучение",
     "menu.daily": "Ежедневное испытание",
     "menu.rewarded": "Реклама за награду",
     "menu.themes": "Темы",
@@ -96,6 +106,7 @@ const DICTS: Record<Language, Dictionary> = {
     "pause.settings": "Настройки",
     "pause.menu": "Главное меню",
     "results.title": "Раунд завершен",
+    "results.title.tutorial": "Обучение пройдено",
     "results.score": "Счет",
     "results.best": "Рекорд",
     "results.tokens": "Токены",
@@ -103,6 +114,7 @@ const DICTS: Record<Language, Dictionary> = {
     "results.double": "Удвоить токены (реклама)",
     "results.play_again": "Сыграть еще",
     "results.menu": "Главное меню",
+    "results.tutorial_hint": "Обучение завершено. Для обычного прогресса запусти обычный или daily-режим.",
     "themes.title": "Темы",
     "themes.back": "Назад",
     "settings.title": "Настройки",
@@ -131,6 +143,10 @@ const DICTS: Record<Language, Dictionary> = {
     "hint.continue_ready_in": "Продолжение будет доступно через {time}",
     "hint.reward_already_used": "Эта награда уже использована в текущем раунде",
     "hint.ads_unavailable": "Реклама недоступна на этой платформе.",
+    "tutorial.progress": "Шаг {step}/{total}: {message}",
+    "tutorial.step1": "Перетащи линию из 3 блоков в подсвеченный разрыв, чтобы закрыть ряд.",
+    "tutorial.step2": "Поставь квадрат в подсказанную позицию, чтобы закрыть колонку.",
+    "tutorial.step3": "Используй Г-образную фигуру в подсвеченном слоте для большого очищения.",
     "toast.continue_unavailable": "Продолжение недоступно",
     "toast.double_unavailable": "Удвоение токенов недоступно",
     "toast.rewarded_cooldown": "Кулдаун наградной рекламы",
@@ -139,7 +155,9 @@ const DICTS: Record<Language, Dictionary> = {
     "toast.reward_already_used": "Эта награда уже использована",
     "toast.ad_unavailable": "Реклама недоступна",
     "toast.rewarded_tokens": "Награда: +{count} токенов",
-    "toast.cant_place": "Нельзя поставить сюда"
+    "toast.cant_place": "Нельзя поставить сюда",
+    "toast.tutorial_follow_hint": "Следуй подсвеченной постановке, чтобы продолжить обучение.",
+    "toast.tutorial_step_complete": "Отлично. Следующий шаг уже готов."
   }
 };
 

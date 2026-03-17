@@ -10,6 +10,7 @@ import { Renderer } from "./Renderer";
 import { ScreenManager } from "./ScreenManager";
 import { ThemeManager, THEMES } from "./ThemeManager";
 import { Toast } from "./Toast";
+import { getTutorialStep, getTutorialStepsCount, isTutorialTargetMove, TutorialStep } from "./tutorial";
 import { logger } from "../utils/logger";
 import type { PlatformBridge, RewardedKind } from "../platform/bridge";
 import { StorageService } from "../services/storage";
@@ -60,6 +61,7 @@ export class App {
   private pendingBestScore = 0;
   private pendingDailyBest: number | null = null;
   private runHappytimeUsed = false;
+  private tutorialStepIndex = -1;
   private dragging:
     | {
         pieceId: string;
@@ -87,11 +89,13 @@ export class App {
     hud: document.querySelector("#screen-game .hud") as HTMLElement | null,
     menuBest: document.getElementById("menu-best") as HTMLElement,
     menuTokens: document.getElementById("menu-tokens") as HTMLElement,
+    resultsTitle: document.querySelector("#screen-results .title") as HTMLElement,
     menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
     menuRewardHint: document.getElementById("menu-reward-hint") as HTMLElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
+    gameHint: document.getElementById("game-tutorial-hint") as HTMLElement,
     resultsScore: document.getElementById("results-score") as HTMLElement,
     resultsBest: document.getElementById("results-best") as HTMLElement,
     resultsTokens: document.getElementById("results-tokens") as HTMLElement,
@@ -163,6 +167,7 @@ export class App {
     window.addEventListener("resize", () => this.resize());
 
     const play = document.getElementById("btn-play");
+    const tutorial = document.getElementById("btn-tutorial");
     const daily = document.getElementById("btn-daily");
     const menuReward = document.getElementById("btn-menu-reward");
     const themes = document.getElementById("btn-themes");
@@ -180,6 +185,7 @@ export class App {
     const settingsClose = document.getElementById("btn-settings-close");
 
     play?.addEventListener("click", () => this.handleButton(() => void this.startRun("play")));
+    tutorial?.addEventListener("click", () => this.handleButton(() => void this.startRun("tutorial")));
     daily?.addEventListener("click", () => this.handleButton(() => void this.startRun("daily")));
     menuReward?.addEventListener("click", () => this.handleButton(() => void this.tryMenuRewarded()));
     themes?.addEventListener("click", () => this.handleButton(() => this.openThemes()));
@@ -358,6 +364,8 @@ export class App {
     document.title = t(lang, "title.full");
     this.elements.settingLanguage.value = lang;
     this.renderThemes();
+    this.updateGameHint();
+    this.updateResultsTitle();
     this.updateResultsHints();
   }
 
@@ -370,10 +378,86 @@ export class App {
     }
   }
 
+  private isTutorialRun(): boolean {
+    return this.session?.state.mode === "tutorial";
+  }
+
+  private getCurrentTutorialStep(): TutorialStep | null {
+    if (!this.isTutorialRun() || this.tutorialStepIndex < 0) {
+      return null;
+    }
+    return getTutorialStep(this.tutorialStepIndex);
+  }
+
+  private getTutorialGuideGhost():
+    | {
+        piece: TutorialStep["target"]["piece"];
+        origin: Point;
+      }
+    | undefined {
+    const step = this.getCurrentTutorialStep();
+    if (!step) {
+      return undefined;
+    }
+    return {
+      piece: step.target.piece,
+      origin: step.target.origin
+    };
+  }
+
+  private loadTutorialStep(index: number): void {
+    if (!this.session) {
+      return;
+    }
+    const step = getTutorialStep(index);
+    if (!step) {
+      return;
+    }
+    this.tutorialStepIndex = index;
+    this.session.setBoardAndPieces(step.board, step.pieces);
+    this.selectedPieceId = null;
+    this.dragging = null;
+    this.dragCandidate = null;
+    this.activePointerId = null;
+    this.renderer.setState({
+      board: this.session.state.board,
+      pieces: this.session.pieces,
+      ghost: undefined,
+      guideGhost: this.getTutorialGuideGhost(),
+      dragging: undefined,
+      selectedPieceId: null
+    });
+    this.updateHud();
+    this.updateGameHint();
+  }
+
+  private updateGameHint(): void {
+    const lang = this.progress.settings.language;
+    const step = this.getCurrentTutorialStep();
+    if (!step || this.activeScreen !== "game") {
+      this.elements.gameHint.hidden = true;
+      this.elements.gameHint.textContent = "";
+      return;
+    }
+    this.elements.gameHint.hidden = false;
+    this.elements.gameHint.textContent = t(lang, "tutorial.progress", {
+      step: step.index + 1,
+      total: step.total,
+      message: t(lang, step.messageKey)
+    });
+  }
+
+  private updateResultsTitle(): void {
+    const lang = this.progress.settings.language;
+    const key = this.isTutorialRun() ? "results.title.tutorial" : "results.title";
+    this.elements.resultsTitle.textContent = t(lang, key);
+  }
+
   private async startRun(mode: GameMode): Promise<void> {
     const now = Date.now();
     const date = new Date();
-    const seed = mode === "daily" ? createDailySeed(date) : `run_${now}`;
+    const seed =
+      mode === "daily" ? createDailySeed(date) : mode === "tutorial" ? "tutorial_v1" : `run_${now}`;
     const rng = createSeededRng(seed);
     this.session = new GameSession(mode, seed, rng, now);
     this.runTokens = 0;
@@ -389,6 +473,7 @@ export class App {
       ? await this.storage.getOptional<number>(this.runDailyKey)
       : null;
     this.runFirstDaily = mode === "daily" && this.runStartDailyBest === null;
+    this.tutorialStepIndex = mode === "tutorial" ? 0 : -1;
     this.selectedPieceId = null;
     this.dragging = null;
     this.dragCandidate = null;
@@ -398,17 +483,25 @@ export class App {
     logger.info("startRun", { mode, seed });
     this.platform.track("startSession", { mode, date: formatDateKey(date) });
     this.platform.track("startRun", { mode, seed });
-    this.progress.runsCount += 1;
-    await this.saveProgress();
+    if (mode !== "tutorial") {
+      this.progress.runsCount += 1;
+      await this.saveProgress();
+    }
+
+    if (mode === "tutorial") {
+      this.loadTutorialStep(this.tutorialStepIndex);
+    }
 
     this.updateHud();
     this.renderer.setState({
       board: this.session.state.board,
       pieces: this.session.pieces,
       ghost: undefined,
+      guideGhost: this.getTutorialGuideGhost(),
       dragging: undefined,
       selectedPieceId: null
     });
+    this.updateGameHint();
     this.showScreen("game");
     this.audio.startMusic();
     this.platform.gameplayStart();
@@ -476,6 +569,8 @@ export class App {
     if (id === "menu") {
       this.updateMenuRewardState();
     }
+    this.updateGameHint();
+    this.updateResultsTitle();
   }
 
   private updateMenuStats(): void {
@@ -545,6 +640,9 @@ export class App {
     if (!this.session) {
       return { ok: false, reason: "no_session" };
     }
+    if (this.session.state.mode === "tutorial") {
+      return { ok: false, reason: "tutorial_mode" };
+    }
     if (this.runFinalized) {
       return { ok: false, reason: "run_finalized" };
     }
@@ -567,6 +665,9 @@ export class App {
   private getDoubleEligibility(): { ok: boolean; reason?: string } {
     if (!this.session) {
       return { ok: false, reason: "no_session" };
+    }
+    if (this.session.state.mode === "tutorial") {
+      return { ok: false, reason: "tutorial_mode" };
     }
     if (this.runFinalized) {
       return { ok: false, reason: "run_finalized" };
@@ -595,6 +696,21 @@ export class App {
     const mode = this.session.state.mode;
     const score = this.session.state.score;
     const duration = now - this.session.state.startedAt;
+
+    if (mode === "tutorial") {
+      this.runTokens = 0;
+      this.runNewBest = false;
+      this.pendingBestScore = this.progress.bestScore;
+      this.pendingDailyBest = null;
+      this.updateResults();
+      this.updateResultsTitle();
+      this.platform.gameplayStop();
+      this.audio.stopMusic();
+      this.audio.playCombo();
+      this.showScreen("results");
+      this.updateResultsHints();
+      return;
+    }
 
     const baseTokens = tokensFromScore(score);
     this.runNewBest = score > this.runStartBestScore;
@@ -644,6 +760,9 @@ export class App {
     }
     // Lock early to prevent duplicate token grants on rapid repeated calls.
     this.runFinalized = true;
+    if (this.session?.state.mode === "tutorial") {
+      return;
+    }
     if (this.runNewBest) {
       this.progress.bestScore = Math.max(this.progress.bestScore, this.pendingBestScore);
     }
@@ -659,14 +778,29 @@ export class App {
     if (!this.session) {
       return;
     }
+    const continueBtn = document.getElementById("btn-continue") as HTMLButtonElement | null;
+    const doubleBtn = document.getElementById("btn-double") as HTMLButtonElement | null;
+    if (this.session.state.mode === "tutorial") {
+      if (continueBtn) {
+        continueBtn.hidden = true;
+        continueBtn.disabled = true;
+      }
+      if (doubleBtn) {
+        doubleBtn.hidden = true;
+        doubleBtn.disabled = true;
+      }
+      this.elements.resultsHint.textContent = t(
+        this.progress.settings.language,
+        "results.tutorial_hint"
+      );
+      return;
+    }
     const lang = this.progress.settings.language;
     const continueEligibility = this.getContinueEligibility();
     const doubleEligibility = this.getDoubleEligibility();
     const adsUnavailable =
       continueEligibility.reason === "ads_unavailable" &&
       doubleEligibility.reason === "ads_unavailable";
-    const continueBtn = document.getElementById("btn-continue") as HTMLButtonElement | null;
-    const doubleBtn = document.getElementById("btn-double") as HTMLButtonElement | null;
 
     if (continueBtn) {
       continueBtn.hidden = adsUnavailable;
@@ -1081,6 +1215,16 @@ export class App {
     if (!this.session) {
       return;
     }
+    const tutorialStep = this.getCurrentTutorialStep();
+    const tutorialPiece = this.session.pieces.find((slot) => slot?.instanceId === pieceId);
+    if (
+      tutorialStep &&
+      (!tutorialPiece || !isTutorialTargetMove(tutorialStep, tutorialPiece.def.id, origin))
+    ) {
+      this.audio.playFail();
+      this.toast.show(t(this.progress.settings.language, "toast.tutorial_follow_hint"));
+      return;
+    }
     const result = this.session.placePiece(pieceId, origin);
     if (!result) {
       this.audio.playFail();
@@ -1096,6 +1240,7 @@ export class App {
     this.renderer.setState({
       board: result.state.board,
       pieces: this.session.pieces,
+      guideGhost: undefined,
       flashLines: {
         rows: result.rows,
         cols: result.cols,
@@ -1104,6 +1249,10 @@ export class App {
     });
     this.updateHud();
 
+    if (this.handleTutorialProgression()) {
+      return;
+    }
+
     if (result.linesCleared >= 3 && result.state.combo >= 2.5) {
       this.triggerHappytime();
     }
@@ -1111,6 +1260,22 @@ export class App {
     if (!this.session.canPlaceAny()) {
       void this.endRun();
     }
+  }
+
+  private handleTutorialProgression(): boolean {
+    if (!this.session || this.session.state.mode !== "tutorial") {
+      return false;
+    }
+    const nextStepIndex = this.tutorialStepIndex + 1;
+    if (nextStepIndex >= getTutorialStepsCount()) {
+      this.tutorialStepIndex = -1;
+      this.renderer.setState({ guideGhost: undefined });
+      void this.endRun();
+      return true;
+    }
+    this.loadTutorialStep(nextStepIndex);
+    this.toast.show(t(this.progress.settings.language, "toast.tutorial_step_complete"));
+    return true;
   }
 
   private getGhostPlacement(

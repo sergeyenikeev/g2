@@ -1,7 +1,7 @@
 import { CONTINUE_COOLDOWN_MS, REWARDED_COOLDOWN_MS } from "../core/constants";
 import { logger } from "../utils/logger";
 
-export type PlatformId = "crazygames" | "poki" | "yandex" | "vkplay" | "rustore" | "generic";
+export type PlatformId = "yandex" | "vkplay" | "rustore" | "generic";
 export type AdType = "midgame" | "rewarded";
 export type RewardedKind = "continue" | "double_tokens" | "rewarded";
 

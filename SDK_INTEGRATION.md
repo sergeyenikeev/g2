@@ -5,8 +5,8 @@ The game now routes all SDK calls through `PlatformBridge`.
 ## Key integration points
 - `src/main.ts` selects an adapter via `src/platform/factory.ts`.
 - `src/platform/bridge.ts` handles cooldowns, logging, storage fallback, and ad orchestration.
-- `src/platform/*/adapter.ts` contains platform-specific SDK calls only.
-- `src/app/App.ts` uses the bridge for loading, gameplay, ads, storage, analytics, and happytime.
+- `src/platform/*/adapter.ts` contains platform-specific SDK calls only for the supported targets (`generic`, `yandex`, `vkplay`, `rustore`).
+- `src/app/App.ts` uses the bridge for loading, gameplay, tutorial flow, ads, storage, analytics, and happytime.
 
 ## Tracked events
 - Run flow: `startSession`, `startRun`, `endRun`

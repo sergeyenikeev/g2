@@ -2,6 +2,15 @@
 
 Place. Clear. Glow - every day.
 
+## Supported targets
+
+- `generic`
+- `yandex`
+- `vkplay`
+- `rustore`
+
+Legacy portal builds for `crazygames`, `poki`, `itchio`, and `newgrounds` are retired and no longer maintained.
+
 ## Local development
 
 ```bash
@@ -9,16 +18,12 @@ npm install
 npm run dev:generic
 ```
 
-Other targets:
+Other supported targets:
 
 ```bash
-npm run dev:crazygames
-npm run dev:poki
 npm run dev:yandex
 npm run dev:vkplay
 npm run dev:rustore
-npm run dev:newgrounds
-npm run dev:itchio
 ```
 
 If PowerShell blocks `npm.ps1`, use `npm.cmd` instead:
@@ -28,19 +33,21 @@ npm.cmd run test
 npm.cmd run lint
 ```
 
+## Tutorial mode
+
+- Started from the main menu via `Tutorial`.
+- Runs a fixed three-step onboarding flow with authored boards and highlighted placements.
+- Does not spend or award tokens and does not affect best score or daily progress.
+
 ## Builds
 
 ```bash
 npm run build:all
 npm run build:all:mock
 npm run build:generic
-npm run build:crazygames
-npm run build:poki
 npm run build:yandex
 npm run build:vkplay
 npm run build:rustore
-npm run build:newgrounds
-npm run build:itchio
 ```
 
 Each build outputs to `dist/<platform>`.
@@ -63,13 +70,13 @@ For portal uploads, ship the contents of `dist/<platform>`:
 
 - `index.html`
 - generated JS/CSS/assets
-- platform-specific metadata or SDK wrapper files, if required by the target portal
+- platform-specific metadata or SDK wrapper files, if required by the target platform
 
 ## Project structure
 
 - `src/core`: game logic (board, scoring, generator)
-- `src/app`: UI, renderer, input, game flow
-- `src/platform`: platform bridge and adapters
+- `src/app`: UI, renderer, tutorial flow, input, game flow
+- `src/platform`: platform bridge and supported adapters
 - `src/services`: storage helpers
 - `tests`: unit tests (Vitest)
 - `promo`: metadata and marketing assets

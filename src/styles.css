@@ -207,6 +207,29 @@ body {
   align-items: center;
 }
 
+.game-hint-wrap {
+  position: absolute;
+  top: calc(84px + var(--safe-top));
+  left: calc(16px + var(--safe-left));
+  right: calc(16px + var(--safe-right));
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.game-hint {
+  margin: 0;
+  max-width: min(640px, 100%);
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(68, 255, 209, 0.28);
+  background: rgba(9, 14, 23, 0.84);
+  color: var(--text);
+  text-align: center;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
 .canvas-wrap {
   display: flex;
   justify-content: center;
@@ -406,6 +429,10 @@ canvas {
       calc(12px + var(--safe-left));
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .game-hint-wrap {
+    top: calc(118px + var(--safe-top));
   }
 
   .hud-right {
