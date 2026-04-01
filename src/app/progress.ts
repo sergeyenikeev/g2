@@ -15,6 +15,7 @@ export interface ProgressState {
   tokens: number;
   themesUnlocked: string[];
   runsCount: number;
+  tutorialCompleted: boolean;
   settings: SettingsState;
 }
 
@@ -23,6 +24,7 @@ export interface StoredProgressSnapshot {
   tokens: unknown;
   themesUnlocked: unknown;
   runsCount: unknown;
+  tutorialCompleted?: unknown;
   settings: unknown;
 }
 
@@ -91,6 +93,7 @@ export const createDefaultProgress = (options: ProgressDefaultsOptions): Progres
   tokens: 0,
   themesUnlocked: [DEFAULT_THEME_ID],
   runsCount: 0,
+  tutorialCompleted: false,
   settings: {
     musicEnabled: true,
     sfxEnabled: true,
@@ -116,6 +119,10 @@ export const normalizeStoredProgress = (
     tokens: coerceNonNegativeInt(snapshot.tokens, defaults.tokens),
     themesUnlocked,
     runsCount: coerceNonNegativeInt(snapshot.runsCount, defaults.runsCount),
+    tutorialCompleted:
+      typeof snapshot.tutorialCompleted === "boolean"
+        ? snapshot.tutorialCompleted
+        : defaults.tutorialCompleted,
     settings: {
       musicEnabled:
         typeof rawSettings.musicEnabled === "boolean"

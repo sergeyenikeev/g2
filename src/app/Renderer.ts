@@ -26,6 +26,7 @@ interface FlashLines {
 export interface RendererState {
   board: Board;
   pieces: Array<ActivePiece | null>;
+  blockedPieceIds?: string[];
   dragging?: { pieceId: string; x: number; y: number };
   selectedPieceId?: string | null;
   ghost?: { piece: PieceDef; origin: Point; valid: boolean };
@@ -225,6 +226,7 @@ export class Renderer {
   private drawPieces(): void {
     const { pieces, dragging, selectedPieceId } = this.state;
     const { cellSize, slotCenters } = this.layout;
+    const blockedPieceIds = new Set(this.state.blockedPieceIds ?? []);
     this.pieceRects.clear();
 
     pieces.forEach((piece, index) => {
@@ -257,7 +259,17 @@ export class Renderer {
         this.ctx.restore();
       }
 
-      this.drawPieceAt(piece.def, startX, startY, cellSize);
+      const blocked = blockedPieceIds.has(piece.instanceId);
+      if (blocked) {
+        this.ctx.save();
+        this.ctx.strokeStyle = "rgba(255, 132, 132, 0.55)";
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([6, 4]);
+        this.roundRect(startX - 6, startY - 6, width + 12, height + 12, 10, false, true);
+        this.ctx.restore();
+      }
+
+      this.drawPieceAt(piece.def, startX, startY, cellSize, false, blocked);
     });
 
     if (dragging) {
@@ -276,20 +288,28 @@ export class Renderer {
     this.ctx.restore();
   }
 
-  private drawPieceAt(piece: PieceDef, x: number, y: number, cellSize: number, floating = false): void {
+  private drawPieceAt(
+    piece: PieceDef,
+    x: number,
+    y: number,
+    cellSize: number,
+    floating = false,
+    muted = false
+  ): void {
     for (const cell of piece.cells) {
       const px = x + cell.x * cellSize;
       const py = y + cell.y * cellSize;
-      this.drawBlock(px, py, cellSize, floating);
+      this.drawBlock(px, py, cellSize, floating, muted);
     }
   }
 
-  private drawBlock(x: number, y: number, size: number, floating = false): void {
+  private drawBlock(x: number, y: number, size: number, floating = false, muted = false): void {
     this.ctx.save();
     this.ctx.fillStyle = this.theme.palette.block;
     this.ctx.strokeStyle = this.theme.palette.blockEdge;
     this.ctx.lineWidth = 2;
-    this.ctx.shadowBlur = floating ? 16 : 12;
+    this.ctx.globalAlpha = muted ? 0.28 : 1;
+    this.ctx.shadowBlur = muted ? 0 : floating ? 16 : 12;
     this.ctx.shadowColor = this.theme.palette.glow;
     const inset = 2;
     this.roundRect(x + inset, y + inset, size - inset * 2, size - inset * 2, 6, true, true);

@@ -13,11 +13,11 @@ export class PieceGenerator {
 
   constructor(private rng: Rng) {}
 
-  nextSet(board: Board, moveIndex: number): ActivePiece[] {
+  nextSet(board: Board, _moveIndex: number): ActivePiece[] {
     const maxAttempts = 24;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const candidate = this.generateSet(this.largeStreak);
-      if (moveIndex < 10 && !canAnyPieceFit(board, candidate.pieces)) {
+      if (!canAnyPieceFit(board, candidate.pieces)) {
         continue;
       }
       this.largeStreak = candidate.largeStreak;
@@ -25,7 +25,7 @@ export class PieceGenerator {
     }
 
     const placeable = getPlaceablePieces(board, PIECES);
-    if (moveIndex < 10 && placeable.length > 0) {
+    if (placeable.length > 0) {
       const forced = this.generateForcedSet(placeable, this.largeStreak);
       this.largeStreak = forced.largeStreak;
       return forced.pieces.map((piece) => this.createActivePiece(piece));

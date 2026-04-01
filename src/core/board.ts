@@ -98,12 +98,8 @@ export const applyPlacement = (
 
 export const canAnyPieceFit = (board: Board, pieces: PieceDef[]): boolean => {
   for (const piece of pieces) {
-    for (let y = 0; y < BOARD_SIZE; y += 1) {
-      for (let x = 0; x < BOARD_SIZE; x += 1) {
-        if (canPlace(board, piece, { x, y })) {
-          return true;
-        }
-      }
+    if (getValidOrigins(board, piece).length > 0) {
+      return true;
     }
   }
   return false;
@@ -112,9 +108,33 @@ export const canAnyPieceFit = (board: Board, pieces: PieceDef[]): boolean => {
 export const getPlaceablePieces = (board: Board, pieces: PieceDef[]): PieceDef[] => {
   const result: PieceDef[] = [];
   for (const piece of pieces) {
-    if (canAnyPieceFit(board, [piece])) {
+    if (getValidOrigins(board, piece).length > 0) {
       result.push(piece);
     }
   }
   return result;
 };
+
+export const getValidOrigins = (board: Board, piece: PieceDef): Point[] => {
+  const result: Point[] = [];
+  const maxX = BOARD_SIZE - piece.bounds.w;
+  const maxY = BOARD_SIZE - piece.bounds.h;
+
+  for (let y = 0; y <= maxY; y += 1) {
+    for (let x = 0; x <= maxX; x += 1) {
+      const origin = { x, y };
+      if (canPlace(board, piece, origin)) {
+        result.push(origin);
+      }
+    }
+  }
+
+  return result;
+};
+
+export const placementOccupiesCell = (
+  piece: PieceDef,
+  origin: Point,
+  target: Point
+): boolean =>
+  piece.cells.some((cell) => origin.x + cell.x === target.x && origin.y + cell.y === target.y);

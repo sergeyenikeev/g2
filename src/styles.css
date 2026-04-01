@@ -279,6 +279,18 @@ canvas {
   margin-top: 4px;
 }
 
+.results-summary {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(68, 255, 209, 0.16);
+  background: rgba(12, 18, 29, 0.68);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  min-height: 0;
+}
+
 .menu-meta {
   margin-top: 18px;
   display: flex;

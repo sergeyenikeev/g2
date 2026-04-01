@@ -1,5 +1,5 @@
 ﻿import { createDailySeed, dailyBestKey, formatDateKey } from "../core/daily";
-import { canPlace } from "../core/board";
+import { applyPlacement, canPlace, getValidOrigins, placementOccupiesCell } from "../core/board";
 import { tokensFromScore } from "../core/game";
 import { createSeededRng } from "../core/rng";
 import { ActivePiece, GameMode, Point } from "../core/types";
@@ -61,6 +61,9 @@ export class App {
   private pendingBestScore = 0;
   private pendingDailyBest: number | null = null;
   private runHappytimeUsed = false;
+  private runDurationMs = 0;
+  private runBonusTokens = 0;
+  private runDailyImproved = false;
   private tutorialStepIndex = -1;
   private dragging:
     | {
@@ -80,6 +83,13 @@ export class App {
     | null = null;
   private activePointerId: number | null = null;
   private selectedPieceId: string | null = null;
+  private selectedPlacementPreview:
+    | {
+        pieceId: string;
+        origin: Point;
+        placementsCount: number;
+      }
+    | null = null;
   private fpsSample = { last: 0, frames: 0, fps: 0 };
   private lastUiRefreshAt = 0;
 
@@ -87,8 +97,10 @@ export class App {
     canvas: document.getElementById("game-canvas") as HTMLCanvasElement,
     canvasWrap: document.querySelector(".canvas-wrap") as HTMLElement | null,
     hud: document.querySelector("#screen-game .hud") as HTMLElement | null,
+    menuPlay: document.getElementById("btn-play") as HTMLButtonElement,
     menuBest: document.getElementById("menu-best") as HTMLElement,
     menuTokens: document.getElementById("menu-tokens") as HTMLElement,
+    menuTutorial: document.getElementById("btn-tutorial") as HTMLButtonElement,
     resultsTitle: document.querySelector("#screen-results .title") as HTMLElement,
     menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
     menuRewardHint: document.getElementById("menu-reward-hint") as HTMLElement,
@@ -99,6 +111,12 @@ export class App {
     resultsScore: document.getElementById("results-score") as HTMLElement,
     resultsBest: document.getElementById("results-best") as HTMLElement,
     resultsTokens: document.getElementById("results-tokens") as HTMLElement,
+    resultsLines: document.getElementById("results-lines") as HTMLElement,
+    resultsMoves: document.getElementById("results-moves") as HTMLElement,
+    resultsDuration: document.getElementById("results-duration") as HTMLElement,
+    resultsPeakCombo: document.getElementById("results-peak-combo") as HTMLElement,
+    resultsBestClear: document.getElementById("results-best-clear") as HTMLElement,
+    resultsSummary: document.getElementById("results-summary") as HTMLElement,
     resultsHint: document.getElementById("results-hint") as HTMLElement,
     adblockBanner: document.getElementById("adblock-banner") as HTMLElement,
     themesGrid: document.getElementById("themes-grid") as HTMLElement,
@@ -149,7 +167,8 @@ export class App {
     const theme = this.themeManager.setTheme(this.progress.settings.themeId);
     this.renderer = new Renderer(this.elements.canvas, theme, {
       board: this.session?.state.board ?? Array.from({ length: 10 }, () => Array(10).fill(0)),
-      pieces: this.session?.pieces ?? [null, null, null]
+      pieces: this.session?.pieces ?? [null, null, null],
+      blockedPieceIds: this.getBlockedPieceIds()
     });
 
     this.attachEvents();
@@ -253,11 +272,13 @@ export class App {
   }
 
   private async loadProgress(): Promise<void> {
-    const [bestScore, tokens, themesUnlocked, runsCount, settings, platformLanguage] = await Promise.all([
+    const [bestScore, tokens, themesUnlocked, runsCount, tutorialCompleted, settings, platformLanguage] =
+      await Promise.all([
       this.storage.getOptional<unknown>("bestScore"),
       this.storage.getOptional<unknown>("tokens"),
       this.storage.getOptional<unknown>("themesUnlocked"),
       this.storage.getOptional<unknown>("runsCount"),
+      this.storage.getOptional<unknown>("tutorialCompleted"),
       this.storage.getOptional<unknown>("settings"),
       this.platform.getLanguage()
     ]);
@@ -268,6 +289,7 @@ export class App {
         tokens,
         themesUnlocked,
         runsCount,
+        tutorialCompleted,
         settings
       },
       {
@@ -289,6 +311,7 @@ export class App {
     await this.storage.set("tokens", this.progress.tokens);
     await this.storage.set("themesUnlocked", this.progress.themesUnlocked);
     await this.storage.set("runsCount", this.progress.runsCount);
+    await this.storage.set("tutorialCompleted", this.progress.tutorialCompleted);
     await this.storage.set("settings", this.progress.settings);
   }
 
@@ -364,7 +387,9 @@ export class App {
     document.title = t(lang, "title.full");
     this.elements.settingLanguage.value = lang;
     this.renderThemes();
+    this.updateTutorialCta();
     this.updateGameHint();
+    this.updateResults();
     this.updateResultsTitle();
     this.updateResultsHints();
   }
@@ -416,12 +441,14 @@ export class App {
     this.tutorialStepIndex = index;
     this.session.setBoardAndPieces(step.board, step.pieces);
     this.selectedPieceId = null;
+    this.selectedPlacementPreview = null;
     this.dragging = null;
     this.dragCandidate = null;
     this.activePointerId = null;
     this.renderer.setState({
       board: this.session.state.board,
       pieces: this.session.pieces,
+      blockedPieceIds: this.getBlockedPieceIds(),
       ghost: undefined,
       guideGhost: this.getTutorialGuideGhost(),
       dragging: undefined,
@@ -434,17 +461,32 @@ export class App {
   private updateGameHint(): void {
     const lang = this.progress.settings.language;
     const step = this.getCurrentTutorialStep();
-    if (!step || this.activeScreen !== "game") {
+    if (this.activeScreen !== "game") {
       this.elements.gameHint.hidden = true;
       this.elements.gameHint.textContent = "";
       return;
     }
-    this.elements.gameHint.hidden = false;
-    this.elements.gameHint.textContent = t(lang, "tutorial.progress", {
-      step: step.index + 1,
-      total: step.total,
-      message: t(lang, step.messageKey)
-    });
+    if (step) {
+      this.elements.gameHint.hidden = false;
+      this.elements.gameHint.textContent = t(lang, "tutorial.progress", {
+        step: step.index + 1,
+        total: step.total,
+        message: t(lang, step.messageKey)
+      });
+      return;
+    }
+    const preview = this.selectedPlacementPreview;
+    if (preview && this.selectedPieceId === preview.pieceId) {
+      this.elements.gameHint.hidden = false;
+      this.elements.gameHint.textContent = t(
+        lang,
+        preview.placementsCount === 1 ? "game.tap_hint.one" : "game.tap_hint.many",
+        preview.placementsCount === 1 ? undefined : { count: preview.placementsCount }
+      );
+      return;
+    }
+    this.elements.gameHint.hidden = true;
+    this.elements.gameHint.textContent = "";
   }
 
   private updateResultsTitle(): void {
@@ -468,6 +510,9 @@ export class App {
     this.pendingBestScore = this.progress.bestScore;
     this.pendingDailyBest = null;
     this.runStartBestScore = this.progress.bestScore;
+    this.runDurationMs = 0;
+    this.runBonusTokens = 0;
+    this.runDailyImproved = false;
     this.runDailyKey = mode === "daily" ? dailyBestKey(date) : null;
     this.runStartDailyBest = this.runDailyKey
       ? await this.storage.getOptional<number>(this.runDailyKey)
@@ -475,6 +520,7 @@ export class App {
     this.runFirstDaily = mode === "daily" && this.runStartDailyBest === null;
     this.tutorialStepIndex = mode === "tutorial" ? 0 : -1;
     this.selectedPieceId = null;
+    this.selectedPlacementPreview = null;
     this.dragging = null;
     this.dragCandidate = null;
     this.activePointerId = null;
@@ -496,6 +542,7 @@ export class App {
     this.renderer.setState({
       board: this.session.state.board,
       pieces: this.session.pieces,
+      blockedPieceIds: this.getBlockedPieceIds(),
       ghost: undefined,
       guideGhost: this.getTutorialGuideGhost(),
       dragging: undefined,
@@ -568,6 +615,7 @@ export class App {
     this.screens.show(id);
     if (id === "menu") {
       this.updateMenuRewardState();
+      this.updateTutorialCta();
     }
     this.updateGameHint();
     this.updateResultsTitle();
@@ -576,6 +624,19 @@ export class App {
   private updateMenuStats(): void {
     this.elements.menuBest.textContent = `${this.progress.bestScore}`;
     this.elements.menuTokens.textContent = `${this.progress.tokens}`;
+    this.updateTutorialCta();
+  }
+
+  private updateTutorialCta(): void {
+    const lang = this.progress.settings.language;
+    const isCompleted = this.progress.tutorialCompleted;
+    this.elements.menuTutorial.textContent = t(
+      lang,
+      isCompleted ? "menu.tutorial_replay" : "menu.tutorial"
+    );
+    this.elements.menuTutorial.classList.toggle("primary", !isCompleted);
+    this.elements.menuPlay.classList.toggle("primary", isCompleted);
+    this.elements.menuTutorial.title = isCompleted ? t(lang, "menu.tutorial_done") : "";
   }
 
   private updateHud(): void {
@@ -592,6 +653,50 @@ export class App {
     const bestDisplay = Math.max(this.progress.bestScore, this.pendingBestScore);
     this.elements.resultsBest.textContent = `${bestDisplay}`;
     this.elements.resultsTokens.textContent = `${this.runTokens}`;
+    this.elements.resultsLines.textContent = `${this.session?.state.linesCleared ?? 0}`;
+    this.elements.resultsMoves.textContent = `${this.session?.state.moves ?? 0}`;
+    this.elements.resultsDuration.textContent =
+      this.runDurationMs > 0 ? this.formatDuration(this.runDurationMs) : "0:00";
+    this.elements.resultsPeakCombo.textContent = `x${(this.session?.state.peakCombo ?? 1).toFixed(2)}`;
+    this.elements.resultsBestClear.textContent = `${this.session?.state.bestClear ?? 0}`;
+    this.updateResultsSummary();
+  }
+
+  private updateResultsSummary(): void {
+    if (!this.session || this.session.state.mode === "tutorial") {
+      this.elements.resultsSummary.hidden = true;
+      this.elements.resultsSummary.textContent = "";
+      return;
+    }
+    const lang = this.progress.settings.language;
+    const items: string[] = [];
+
+    if (this.runNewBest) {
+      items.push(t(lang, "results.summary.new_best"));
+    }
+    if (this.session.state.mode === "daily") {
+      if (this.runDailyImproved) {
+        items.push(
+          t(
+            lang,
+            this.runStartDailyBest === null
+              ? "results.summary.daily_first"
+              : "results.summary.daily_best"
+          )
+        );
+      } else if (this.pendingDailyBest !== null) {
+        items.push(t(lang, "results.summary.daily_current", { score: this.pendingDailyBest }));
+      }
+    }
+    if (this.runBonusTokens > 0) {
+      items.push(t(lang, "results.summary.token_bonus", { count: this.runBonusTokens }));
+    }
+    if (this.session.doubleTokensUsed) {
+      items.push(t(lang, "results.summary.double_applied"));
+    }
+
+    this.elements.resultsSummary.hidden = items.length === 0;
+    this.elements.resultsSummary.textContent = items.join(" • ");
   }
 
   private isRewardedAvailable(): boolean {
@@ -655,6 +760,9 @@ export class App {
     if (this.session.state.score < CONTINUE_MIN_SCORE) {
       return { ok: false, reason: "score_low" };
     }
+    if (!this.session.canOfferContinue()) {
+      return { ok: false, reason: "no_space" };
+    }
     const cooldown = this.platform.canShowRewardedNow("continue");
     if (!cooldown.ok) {
       return cooldown;
@@ -698,12 +806,22 @@ export class App {
     const duration = now - this.session.state.startedAt;
 
     if (mode === "tutorial") {
+      this.runDurationMs = duration;
+      this.runBonusTokens = 0;
+      this.runDailyImproved = false;
+      this.progress.tutorialCompleted = true;
       this.runTokens = 0;
       this.runNewBest = false;
       this.pendingBestScore = this.progress.bestScore;
       this.pendingDailyBest = null;
+      await this.saveProgress();
+      this.updateMenuStats();
       this.updateResults();
       this.updateResultsTitle();
+      this.platform.track("completeTutorial", {
+        steps: getTutorialStepsCount(),
+        duration
+      });
       this.platform.gameplayStop();
       this.audio.stopMusic();
       this.audio.playCombo();
@@ -713,18 +831,22 @@ export class App {
     }
 
     const baseTokens = tokensFromScore(score);
+    this.runDurationMs = duration;
     this.runNewBest = score > this.runStartBestScore;
     this.pendingBestScore = this.runNewBest ? score : this.runStartBestScore;
 
     if (mode === "daily") {
       const dailyBest = this.runStartDailyBest;
+      this.runDailyImproved = dailyBest === null || score > dailyBest;
       this.pendingDailyBest =
         dailyBest === null || score > dailyBest ? score : (dailyBest as number);
     } else {
+      this.runDailyImproved = false;
       this.pendingDailyBest = null;
     }
 
     const bonus = (this.runNewBest ? 2 : 0) + (this.runFirstDaily ? 3 : 0);
+    this.runBonusTokens = bonus;
     this.runTokens = baseTokens + bonus;
     this.updateResults();
 
@@ -827,6 +949,8 @@ export class App {
         );
       } else if (continueEligibility.reason === "score_low") {
         hints.add(t(lang, "hint.continue_need_score", { score: CONTINUE_MIN_SCORE }));
+      } else if (continueEligibility.reason === "no_space") {
+        hints.add(t(lang, "hint.continue_no_space"));
       } else if (continueEligibility.reason === "already_used") {
         hints.add(t(lang, "hint.reward_already_used"));
       } else if (
@@ -895,17 +1019,19 @@ export class App {
       return;
     }
     const eligibility = this.getContinueEligibility();
+    const lang = this.progress.settings.language;
     if (!eligibility.ok) {
       logger.warn("rewarded_denied", { reason: eligibility.reason ?? "continue_unavailable" });
       this.platform.track("rewardedDenied", {
         kind: "continue",
         reason: eligibility.reason ?? "continue_unavailable"
       });
-      const lang = this.progress.settings.language;
       if (eligibility.reason === "ads_unavailable") {
         this.toast.show(t(lang, "toast.ad_unavailable"));
       } else if (eligibility.reason === "score_low") {
         this.toast.show(t(lang, "toast.continue_need_score", { score: CONTINUE_MIN_SCORE }));
+      } else if (eligibility.reason === "no_space") {
+        this.toast.show(t(lang, "toast.continue_no_space"));
       } else if (eligibility.reason === "already_used") {
         this.toast.show(t(lang, "toast.reward_already_used"));
       } else {
@@ -915,13 +1041,19 @@ export class App {
     }
 
     await this.requestRewarded("continue", () => {
-      this.session?.setContinuePieces();
+      if (!this.session?.setContinuePieces()) {
+        this.toast.show(t(lang, "toast.continue_no_space"));
+        return;
+      }
       this.platform.markContinueUsed();
+      this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
       this.saveProgress();
       this.updateHud();
       this.renderer.setState({
         board: this.session?.state.board ?? Array.from({ length: 10 }, () => Array(10).fill(0)),
         pieces: this.session?.pieces ?? [null, null, null],
+        blockedPieceIds: this.getBlockedPieceIds(),
         ghost: undefined,
         dragging: undefined,
         selectedPieceId: null
@@ -1037,6 +1169,23 @@ export class App {
     const point = this.getCanvasPoint(event);
     const pieceId = this.renderer.hitTestPiece(point);
     const isTapMode = this.progress.settings.tapToPlace && event.pointerType !== "mouse";
+    const piece = pieceId
+      ? this.session.pieces.find((slot) => slot?.instanceId === pieceId) ?? null
+      : null;
+
+    if (piece && !this.isTutorialRun() && !this.isPiecePlaceable(piece)) {
+      if (this.elements.canvas.releasePointerCapture) {
+        this.elements.canvas.releasePointerCapture(event.pointerId);
+      }
+      this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
+      this.dragCandidate = null;
+      this.activePointerId = null;
+      this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+      this.updateGameHint();
+      this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
+      return;
+    }
 
     if (isTapMode) {
       if (pieceId) {
@@ -1044,8 +1193,23 @@ export class App {
         if (!rect) {
           return;
         }
+        if (!piece) {
+          return;
+        }
+        const preview = this.isTutorialRun() ? null : this.getPlacementPreview(piece);
+        if (!this.isTutorialRun() && !preview) {
+          this.selectedPieceId = null;
+          this.selectedPlacementPreview = null;
+          this.dragCandidate = null;
+          this.activePointerId = null;
+          this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+          this.updateGameHint();
+          this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
+          return;
+        }
         this.activePointerId = event.pointerId;
         this.selectedPieceId = pieceId;
+        this.selectedPlacementPreview = preview;
         this.dragCandidate = {
           pieceId,
           start: point,
@@ -1053,7 +1217,17 @@ export class App {
           offsetY: point.y - rect.y,
           pointerId: event.pointerId
         };
-        this.renderer.setState({ selectedPieceId: pieceId, ghost: undefined });
+        this.renderer.setState({
+          selectedPieceId: pieceId,
+          ghost: preview
+            ? {
+                piece: piece.def,
+                origin: preview.origin,
+                valid: true
+              }
+            : undefined
+        });
+        this.updateGameHint();
       } else if (this.selectedPieceId) {
         const cell = this.renderer.getBoardCell(point);
         if (cell) {
@@ -1066,6 +1240,9 @@ export class App {
     if (pieceId) {
       const rect = this.renderer.getPieceRect(pieceId);
       if (!rect) {
+        return;
+      }
+      if (!piece) {
         return;
       }
       this.activePointerId = event.pointerId;
@@ -1106,6 +1283,8 @@ export class App {
       if (!piece) {
         this.dragCandidate = null;
         this.activePointerId = null;
+        this.selectedPlacementPreview = null;
+        this.updateGameHint();
         return;
       }
       this.dragging = {
@@ -1115,6 +1294,7 @@ export class App {
       };
       this.dragCandidate = null;
       this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
       const dragX = point.x - this.dragging.offsetX;
       const dragY = point.y - this.dragging.offsetY;
       const ghost = this.getGhostPlacement(piece, { x: dragX, y: dragY });
@@ -1123,6 +1303,7 @@ export class App {
         selectedPieceId: null,
         ghost
       });
+      this.updateGameHint();
       return;
     }
     if (!this.dragging) {
@@ -1201,14 +1382,29 @@ export class App {
       return;
     }
     const ghost = this.getGhostPlacement(piece, { x: cell.x, y: cell.y }, true);
+    const preview = this.selectedPlacementPreview;
+    const previewMatchesSelection =
+      preview !== null &&
+      preview.pieceId === piece.instanceId &&
+      placementOccupiesCell(piece.def, preview.origin, cell);
     if (!ghost || !ghost.valid) {
+      if (previewMatchesSelection && preview) {
+        this.selectedPieceId = null;
+        this.selectedPlacementPreview = null;
+        this.commitPlacement(piece.instanceId, preview.origin);
+        this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+        this.updateGameHint();
+        return;
+      }
       this.audio.playFail();
       this.toast.show(t(this.progress.settings.language, "toast.cant_place"));
       return;
     }
-    this.commitPlacement(piece.instanceId, ghost.origin);
     this.selectedPieceId = null;
+    this.selectedPlacementPreview = null;
+    this.commitPlacement(piece.instanceId, ghost.origin);
     this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+    this.updateGameHint();
   }
 
   private commitPlacement(pieceId: string, origin: Point): void {
@@ -1230,6 +1426,7 @@ export class App {
       this.audio.playFail();
       return;
     }
+    this.selectedPlacementPreview = null;
     this.audio.playPlace();
     if (result.linesCleared > 0) {
       this.audio.playClear(result.linesCleared);
@@ -1240,6 +1437,7 @@ export class App {
     this.renderer.setState({
       board: result.state.board,
       pieces: this.session.pieces,
+      blockedPieceIds: this.getBlockedPieceIds(),
       guideGhost: undefined,
       flashLines: {
         rows: result.rows,
@@ -1248,6 +1446,7 @@ export class App {
       }
     });
     this.updateHud();
+    this.updateGameHint();
 
     if (this.handleTutorialProgression()) {
       return;
@@ -1296,6 +1495,90 @@ export class App {
     }
     const valid = canPlace(this.session.state.board, piece.def, origin);
     return { piece: piece.def, origin, valid };
+  }
+
+  private getPlacementPreview(
+    piece: ActivePiece
+  ): { pieceId: string; origin: Point; placementsCount: number } | null {
+    if (!this.session) {
+      return null;
+    }
+    const origins = getValidOrigins(this.session.state.board, piece.def);
+    if (origins.length === 0) {
+      return null;
+    }
+
+    const boardCenter = 4.5;
+    let bestOrigin = origins[0];
+    let bestClears = -1;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const origin of origins) {
+      const placement = applyPlacement(this.session.state.board, piece.def, origin);
+      if (!placement) {
+        continue;
+      }
+      const centerX = origin.x + (piece.def.bounds.w - 1) / 2;
+      const centerY = origin.y + (piece.def.bounds.h - 1) / 2;
+      const distance = Math.abs(centerX - boardCenter) + Math.abs(centerY - boardCenter);
+      if (
+        placement.clearedCount > bestClears ||
+        (placement.clearedCount === bestClears && distance < bestDistance) ||
+        (placement.clearedCount === bestClears &&
+          distance === bestDistance &&
+          (origin.y < bestOrigin.y || (origin.y === bestOrigin.y && origin.x < bestOrigin.x)))
+      ) {
+        bestOrigin = origin;
+        bestClears = placement.clearedCount;
+        bestDistance = distance;
+      }
+    }
+
+    return {
+      pieceId: piece.instanceId,
+      origin: bestOrigin,
+      placementsCount: origins.length
+    };
+  }
+
+  private isPiecePlaceable(piece: ActivePiece): boolean {
+    if (!this.session) {
+      return false;
+    }
+    return getValidOrigins(this.session.state.board, piece.def).length > 0;
+  }
+
+  private getBlockedPieceIds(): string[] {
+    if (!this.session || this.isTutorialRun()) {
+      return [];
+    }
+    return this.session.pieces.flatMap((piece) =>
+      piece && !this.isPiecePlaceable(piece) ? [piece.instanceId] : []
+    );
+  }
+
+  private getSelectedGhost():
+    | {
+        piece: ActivePiece["def"];
+        origin: Point;
+        valid: boolean;
+      }
+    | undefined {
+    if (!this.session || !this.selectedPieceId || !this.selectedPlacementPreview) {
+      return undefined;
+    }
+    if (this.selectedPlacementPreview.pieceId !== this.selectedPieceId) {
+      return undefined;
+    }
+    const piece = this.session.pieces.find((slot) => slot?.instanceId === this.selectedPieceId);
+    if (!piece) {
+      return undefined;
+    }
+    return {
+      piece: piece.def,
+      origin: this.selectedPlacementPreview.origin,
+      valid: true
+    };
   }
 
   private triggerHappytime(): void {
@@ -1422,14 +1705,21 @@ export class App {
     this.activePointerId = null;
     if (options?.clearSelection) {
       this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
       this.renderer.setState({
         dragging: undefined,
         ghost: undefined,
         selectedPieceId: null
       });
+      this.updateGameHint();
       return;
     }
-    this.renderer.setState({ dragging: undefined, ghost: undefined });
+    this.renderer.setState({
+      dragging: undefined,
+      ghost: this.getSelectedGhost(),
+      selectedPieceId: this.selectedPieceId
+    });
+    this.updateGameHint();
   }
 
   private renderThemes(): void {

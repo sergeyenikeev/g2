@@ -1,5 +1,13 @@
 ﻿import { describe, expect, it } from "vitest";
-import { applyPlacement, canAnyPieceFit, canPlace, createBoard, getPlaceablePieces } from "../src/core/board";
+import {
+  applyPlacement,
+  canAnyPieceFit,
+  canPlace,
+  createBoard,
+  getPlaceablePieces,
+  getValidOrigins,
+  placementOccupiesCell
+} from "../src/core/board";
 import { PIECES } from "../src/core/pieces";
 
 const dot = PIECES.find((piece) => piece.id === "dot");
@@ -84,5 +92,21 @@ describe("board placement", () => {
     const board = createBoard();
     const placeable = getPlaceablePieces(board, [dot, line3h]);
     expect(placeable.length).toBe(2);
+  });
+
+  it("lists valid origins for a piece on a constrained board", () => {
+    const board = createBoard();
+    board[0][0] = 1;
+    board[0][1] = 1;
+
+    const origins = getValidOrigins(board, dot);
+
+    expect(origins).not.toContainEqual({ x: 0, y: 0 });
+    expect(origins).toContainEqual({ x: 2, y: 0 });
+  });
+
+  it("detects whether a placement covers a tapped cell", () => {
+    expect(placementOccupiesCell(line3h, { x: 2, y: 4 }, { x: 3, y: 4 })).toBe(true);
+    expect(placementOccupiesCell(line3h, { x: 2, y: 4 }, { x: 3, y: 5 })).toBe(false);
   });
 });

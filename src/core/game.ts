@@ -8,6 +8,8 @@ export interface GameState {
   board: Board;
   score: number;
   combo: number;
+  peakCombo: number;
+  bestClear: number;
   moves: number;
   linesCleared: number;
   mode: GameMode;
@@ -33,6 +35,8 @@ export const createEmptyState = (
   board,
   score: 0,
   combo: COMBO_START,
+  peakCombo: COMBO_START,
+  bestClear: 0,
   moves: 0,
   linesCleared: 0,
   mode,
@@ -59,6 +63,8 @@ export const applyMove = (
     board: placement.board,
     score: state.score + placementScore + clearScore,
     combo: nextCombo,
+    peakCombo: Math.max(state.peakCombo, nextCombo),
+    bestClear: Math.max(state.bestClear, placement.clearedCount),
     moves: state.moves + 1,
     linesCleared: state.linesCleared + placement.clearedCount
   };

@@ -38,6 +38,7 @@ npm.cmd run lint
 - Started from the main menu via `Tutorial`.
 - Runs a fixed three-step onboarding flow with authored boards and highlighted placements.
 - Does not spend or award tokens and does not affect best score or daily progress.
+- Completion is saved, and after the first pass the menu CTA changes to `Replay Tutorial`.
 
 ## Builds
 
@@ -90,6 +91,7 @@ The following keys are stored via the platform bridge with localStorage fallback
 - `dailyBest_YYYYMMDD`
 - `rewardCooldownUntil`
 - `runsCount`
+- `tutorialCompleted`
 - `settings`
 - `tokens`
 

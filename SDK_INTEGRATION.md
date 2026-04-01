@@ -9,7 +9,7 @@ The game now routes all SDK calls through `PlatformBridge`.
 - `src/app/App.ts` uses the bridge for loading, gameplay, tutorial flow, ads, storage, analytics, and happytime.
 
 ## Tracked events
-- Run flow: `startSession`, `startRun`, `endRun`
+- Run flow: `startSession`, `startRun`, `endRun`, `completeTutorial`
 - Reward flow: `rewardedDenied`, `rewardedUsed`
 - Ads: `adRequested`, `adStarted`, `adFinished`, `adError`
 - Economy: `purchaseTheme`

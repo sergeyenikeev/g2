@@ -11,6 +11,7 @@ describe("progress normalization", () => {
     expect(progress.settings.tapToPlace).toBe(true);
     expect(progress.settings.themeId).toBe("lume");
     expect(progress.themesUnlocked).toEqual(["lume"]);
+    expect(progress.tutorialCompleted).toBe(false);
   });
 
   it("sanitizes corrupted numeric values", () => {
@@ -28,6 +29,7 @@ describe("progress normalization", () => {
     expect(progress.bestScore).toBe(0);
     expect(progress.tokens).toBe(0);
     expect(progress.runsCount).toBe(0);
+    expect(progress.tutorialCompleted).toBe(false);
   });
 
   it("drops invalid themes and falls back to an unlocked theme", () => {
@@ -86,5 +88,33 @@ describe("progress normalization", () => {
     );
 
     expect(progress.settings.language).toBe("ru");
+  });
+
+  it("keeps tutorial completion only when stored as a valid boolean", () => {
+    const completed = normalizeStoredProgress(
+      {
+        bestScore: 0,
+        tokens: 0,
+        themesUnlocked: ["lume"],
+        runsCount: 0,
+        tutorialCompleted: true,
+        settings: {}
+      },
+      { platformId: "generic", isTouch: false }
+    );
+    const corrupted = normalizeStoredProgress(
+      {
+        bestScore: 0,
+        tokens: 0,
+        themesUnlocked: ["lume"],
+        runsCount: 0,
+        tutorialCompleted: "yes",
+        settings: {}
+      },
+      { platformId: "generic", isTouch: false }
+    );
+
+    expect(completed.tutorialCompleted).toBe(true);
+    expect(corrupted.tutorialCompleted).toBe(false);
   });
 });

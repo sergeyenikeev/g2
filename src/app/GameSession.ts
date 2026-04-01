@@ -1,9 +1,20 @@
-﻿import { canAnyPieceFit, createBoard } from "../core/board";
+import { canAnyPieceFit, createBoard, getPlaceablePieces } from "../core/board";
 import { applyMove, createEmptyState, GameState, MoveResult } from "../core/game";
 import { PieceGenerator } from "../core/generator";
-import { getPieceById } from "../core/pieces";
+import { getPieceById, PIECES } from "../core/pieces";
 import { ActivePiece, Board, GameMode, PieceDef, Point } from "../core/types";
 import { Rng } from "../core/rng";
+
+const CONTINUE_PREFERRED_IDS = [
+  "dot",
+  "domino_h",
+  "domino_v",
+  "square_2",
+  "line_3_h",
+  "line_3_v",
+  "l_3x2",
+  "j_3x2"
+] as const;
 
 export class GameSession {
   private generator: PieceGenerator;
@@ -49,20 +60,19 @@ export class GameSession {
     this.pieces = pieces.map((piece) => (piece ? this.wrapPiece(piece, "t") : null));
   }
 
-  setContinuePieces(): void {
-    const dot = getPieceById("dot");
-    const domino = getPieceById("domino_h");
-    const square = getPieceById("square_2");
-    if (!dot || !domino || !square) {
-      return;
+  canOfferContinue(): boolean {
+    return this.buildContinueLoadout().length > 0;
+  }
+
+  setContinuePieces(): boolean {
+    const loadout = this.buildContinueLoadout();
+    if (loadout.length === 0) {
+      return false;
     }
-    this.pieces = [
-      this.wrapPiece(dot),
-      this.wrapPiece(domino),
-      this.wrapPiece(square)
-    ];
+    this.pieces = loadout.map((piece) => this.wrapPiece(piece));
     this.state = { ...this.state, combo: 1 };
     this.continueUsed = true;
+    return true;
   }
 
   canPlaceAny(): boolean {
@@ -77,5 +87,36 @@ export class GameSession {
     const instanceId = `${prefix}_${this.idCounter}`;
     this.idCounter += 1;
     return { instanceId, def };
+  }
+
+  private buildContinueLoadout(): PieceDef[] {
+    const preferred = CONTINUE_PREFERRED_IDS.map((id) => getPieceById(id)).filter(
+      (piece): piece is PieceDef => piece !== undefined
+    );
+    const orderedPool = [
+      ...preferred,
+      ...PIECES.filter((piece) => !preferred.some((candidate) => candidate.id === piece.id))
+    ];
+    const placeable = getPlaceablePieces(this.state.board, orderedPool);
+    if (placeable.length === 0) {
+      return [];
+    }
+
+    const selected: PieceDef[] = [];
+    for (const piece of placeable) {
+      if (selected.some((candidate) => candidate.id === piece.id)) {
+        continue;
+      }
+      selected.push(piece);
+      if (selected.length === 3) {
+        return selected;
+      }
+    }
+
+    while (selected.length < 3) {
+      selected.push(selected[selected.length % placeable.length] ?? placeable[0]);
+    }
+
+    return selected;
   }
 }
