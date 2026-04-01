@@ -64,6 +64,8 @@ export class App {
   private runDurationMs = 0;
   private runBonusTokens = 0;
   private runDailyImproved = false;
+  private currentDailyKey = dailyBestKey(new Date());
+  private currentDailyBest: number | null = null;
   private tutorialStepIndex = -1;
   private dragging:
     | {
@@ -104,6 +106,7 @@ export class App {
     resultsTitle: document.querySelector("#screen-results .title") as HTMLElement,
     menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
     menuRewardHint: document.getElementById("menu-reward-hint") as HTMLElement,
+    menuDailyStatus: document.getElementById("menu-daily-status") as HTMLElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
@@ -272,6 +275,7 @@ export class App {
   }
 
   private async loadProgress(): Promise<void> {
+    const todayDailyKey = dailyBestKey(new Date());
     const [bestScore, tokens, themesUnlocked, runsCount, tutorialCompleted, settings, platformLanguage] =
       await Promise.all([
       this.storage.getOptional<unknown>("bestScore"),
@@ -282,6 +286,8 @@ export class App {
       this.storage.getOptional<unknown>("settings"),
       this.platform.getLanguage()
     ]);
+    this.currentDailyKey = todayDailyKey;
+    this.currentDailyBest = await this.storage.getOptional<number>(todayDailyKey);
 
     this.progress = normalizeStoredProgress(
       {
@@ -388,6 +394,7 @@ export class App {
     this.elements.settingLanguage.value = lang;
     this.renderThemes();
     this.updateTutorialCta();
+    this.updateMenuDailyStatus();
     this.updateGameHint();
     this.updateResults();
     this.updateResultsTitle();
@@ -614,6 +621,7 @@ export class App {
     this.activeScreen = id;
     this.screens.show(id);
     if (id === "menu") {
+      void this.refreshCurrentDailyBest();
       this.updateMenuRewardState();
       this.updateTutorialCta();
     }
@@ -625,6 +633,31 @@ export class App {
     this.elements.menuBest.textContent = `${this.progress.bestScore}`;
     this.elements.menuTokens.textContent = `${this.progress.tokens}`;
     this.updateTutorialCta();
+    this.updateMenuDailyStatus();
+  }
+
+  private updateMenuDailyStatus(): void {
+    const lang = this.progress.settings.language;
+    this.elements.menuDailyStatus.textContent =
+      this.currentDailyBest === null
+        ? t(lang, "menu.daily_status.empty")
+        : t(lang, "menu.daily_status.best", { score: this.currentDailyBest });
+  }
+
+  private async refreshCurrentDailyBest(): Promise<void> {
+    if (!this.storage) {
+      return;
+    }
+    const todayKey = dailyBestKey(new Date());
+    if (todayKey !== this.currentDailyKey) {
+      this.currentDailyKey = todayKey;
+      this.currentDailyBest = await this.storage.getOptional<number>(todayKey);
+      this.updateMenuDailyStatus();
+      return;
+    }
+    if (this.activeScreen === "menu") {
+      this.updateMenuDailyStatus();
+    }
   }
 
   private updateTutorialCta(): void {
@@ -890,6 +923,9 @@ export class App {
     }
     if (this.runDailyKey && this.pendingDailyBest !== null) {
       await this.storage.set(this.runDailyKey, this.pendingDailyBest);
+      if (this.runDailyKey === this.currentDailyKey) {
+        this.currentDailyBest = this.pendingDailyBest;
+      }
     }
     this.progress.tokens += this.runTokens;
     await this.saveProgress();
