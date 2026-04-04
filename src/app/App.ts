@@ -6,6 +6,7 @@ import { ActivePiece, GameMode, Point } from "../core/types";
 import { AudioManager } from "./AudioManager";
 import { DebugOverlay } from "./DebugOverlay";
 import { GameSession } from "./GameSession";
+import { getNextPlacementOrigin, type NavigationDirection } from "./keyboardPlacement";
 import { Renderer, type RendererState } from "./Renderer";
 import { ScreenManager } from "./ScreenManager";
 import { ThemeManager, THEMES } from "./ThemeManager";
@@ -85,6 +86,7 @@ export class App {
     | null = null;
   private activePointerId: number | null = null;
   private selectedPieceId: string | null = null;
+  private selectedInputMode: "tap" | "keyboard" | null = null;
   private selectedPlacementPreview:
     | {
         pieceId: string;
@@ -242,6 +244,7 @@ export class App {
     });
 
     document.addEventListener("visibilitychange", () => this.handleVisibilityChange());
+    document.addEventListener("keydown", (event) => this.onKeyDown(event));
     window.addEventListener("blur", () => this.handleVisibilityChange(true));
     window.addEventListener("focus", () => this.handleVisibilityChange(false));
     window.addEventListener("pagehide", () => this.handleVisibilityChange(true));
@@ -353,7 +356,9 @@ export class App {
     if (hidden) {
       if (this.activeScreen === "game") {
         const keepSelection =
-          this.progress.settings.tapToPlace && this.selectedPieceId !== null && this.dragging === null;
+          this.selectedPieceId !== null &&
+          this.dragging === null &&
+          (this.progress.settings.tapToPlace || this.selectedInputMode === "keyboard");
         this.resetPointerInteraction({ clearSelection: !keepSelection });
       }
       void this.audio.suspend();
@@ -386,6 +391,75 @@ export class App {
     if (target?.closest("#app")) {
       event.preventDefault();
     }
+  }
+
+  private onKeyDown(event: KeyboardEvent): void {
+    if (event.defaultPrevented || this.isEditableTarget(event.target)) {
+      return;
+    }
+
+    if (this.activeScreen === "pause" && event.key === "Escape") {
+      event.preventDefault();
+      this.handleButton(() => this.resumeGame());
+      return;
+    }
+
+    if (this.activeScreen !== "game" || !this.session) {
+      return;
+    }
+
+    this.audio.unlock();
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (this.selectedPieceId) {
+        this.clearSelection();
+      } else {
+        this.handleButton(() => this.pauseGame());
+      }
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      this.cycleKeyboardPiece(event.shiftKey ? -1 : 1);
+      return;
+    }
+
+    const slotIndex = this.getKeyboardSlotIndex(event);
+    if (slotIndex !== null) {
+      event.preventDefault();
+      this.selectPieceFromSlot(slotIndex);
+      return;
+    }
+
+    const direction = this.getKeyboardDirection(event.key);
+    if (direction) {
+      event.preventDefault();
+      this.moveSelectedPlacement(direction);
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " " || event.code === "Space") {
+      event.preventDefault();
+      this.placeSelectedPieceFromKeyboard();
+    }
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    const element = target as HTMLElement | null;
+    if (!element) {
+      return false;
+    }
+    const tagName = element.tagName;
+    return (
+      element.isContentEditable ||
+      tagName === "BUTTON" ||
+      tagName === "A" ||
+      tagName === "INPUT" ||
+      tagName === "TEXTAREA" ||
+      tagName === "SELECT"
+    );
   }
 
   private applyLanguage(): void {
@@ -451,6 +525,7 @@ export class App {
     this.session.setBoardAndPieces(step.board, step.pieces);
     this.selectedPieceId = null;
     this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
     this.dragging = null;
     this.dragCandidate = null;
     this.activePointerId = null;
@@ -489,7 +564,13 @@ export class App {
       this.elements.gameHint.hidden = false;
       this.elements.gameHint.textContent = t(
         lang,
-        preview.placementsCount === 1 ? "game.tap_hint.one" : "game.tap_hint.many",
+        this.selectedInputMode === "keyboard"
+          ? preview.placementsCount === 1
+            ? "game.keyboard_hint.one"
+            : "game.keyboard_hint.many"
+          : preview.placementsCount === 1
+            ? "game.tap_hint.one"
+            : "game.tap_hint.many",
         preview.placementsCount === 1 ? undefined : { count: preview.placementsCount }
       );
       return;
@@ -545,6 +626,7 @@ export class App {
     this.tutorialStepIndex = mode === "tutorial" ? 0 : -1;
     this.selectedPieceId = null;
     this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
     this.dragging = null;
     this.dragCandidate = null;
     this.activePointerId = null;
@@ -641,6 +723,8 @@ export class App {
       void this.refreshCurrentDailyBest();
       this.updateMenuRewardState();
       this.updateTutorialCta();
+    } else if (id === "game") {
+      this.elements.canvas.focus();
     }
     this.updateGameHint();
     this.updateResultsTitle();
@@ -1105,6 +1189,7 @@ export class App {
       this.platform.markContinueUsed();
       this.selectedPieceId = null;
       this.selectedPlacementPreview = null;
+      this.selectedInputMode = null;
       this.saveProgress();
       this.updateHud();
       this.renderer.setState({
@@ -1209,6 +1294,193 @@ export class App {
     }
   }
 
+  private getKeyboardSlotIndex(event: KeyboardEvent): number | null {
+    if (event.key >= "1" && event.key <= "3") {
+      return Number(event.key) - 1;
+    }
+    if (event.code === "Numpad1" || event.code === "Numpad2" || event.code === "Numpad3") {
+      return Number(event.code.slice(-1)) - 1;
+    }
+    return null;
+  }
+
+  private getKeyboardDirection(key: string): NavigationDirection | null {
+    if (key === "ArrowLeft") {
+      return "left";
+    }
+    if (key === "ArrowRight") {
+      return "right";
+    }
+    if (key === "ArrowUp") {
+      return "up";
+    }
+    if (key === "ArrowDown") {
+      return "down";
+    }
+    return null;
+  }
+
+  private clearSelection(): void {
+    this.selectedPieceId = null;
+    this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
+    this.renderer.setState({
+      selectedPieceId: null,
+      ghost: undefined
+    });
+    this.updateGameHint();
+  }
+
+  private selectPiece(
+    pieceId: string,
+    inputMode: "tap" | "keyboard",
+    showBlockedToast: boolean
+  ): boolean {
+    const piece = this.session?.pieces.find((slot) => slot?.instanceId === pieceId) ?? null;
+    if (!piece) {
+      return false;
+    }
+
+    if (!this.isTutorialRun() && !this.isPiecePlaceable(piece)) {
+      this.clearSelection();
+      if (showBlockedToast) {
+        this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
+      }
+      return false;
+    }
+
+    const preview = this.isTutorialRun() ? null : this.getPlacementPreview(piece);
+    if (!this.isTutorialRun() && !preview) {
+      this.clearSelection();
+      if (showBlockedToast) {
+        this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
+      }
+      return false;
+    }
+
+    this.selectedPieceId = pieceId;
+    this.selectedPlacementPreview = preview;
+    this.selectedInputMode = inputMode;
+    this.renderer.setState({
+      selectedPieceId: pieceId,
+      ghost: preview
+        ? {
+            piece: piece.def,
+            origin: preview.origin,
+            valid: true
+          }
+        : undefined
+    });
+    this.updateGameHint();
+    return true;
+  }
+
+  private selectPieceFromSlot(index: number): void {
+    if (!this.session) {
+      return;
+    }
+    const piece = this.session.pieces[index];
+    if (!piece) {
+      return;
+    }
+    this.audio.playButton();
+    this.selectPiece(piece.instanceId, "keyboard", true);
+  }
+
+  private cycleKeyboardPiece(step: 1 | -1): void {
+    if (!this.session) {
+      return;
+    }
+
+    const candidates = this.session.pieces.filter((piece): piece is ActivePiece =>
+      piece !== null && (this.isTutorialRun() || this.isPiecePlaceable(piece))
+    );
+    if (candidates.length === 0) {
+      return;
+    }
+
+    const currentIndex = candidates.findIndex((piece) => piece.instanceId === this.selectedPieceId);
+    const nextIndex =
+      currentIndex === -1
+        ? step === 1
+          ? 0
+          : candidates.length - 1
+        : (currentIndex + step + candidates.length) % candidates.length;
+
+    this.audio.playButton();
+    this.selectPiece(candidates[nextIndex].instanceId, "keyboard", false);
+  }
+
+  private moveSelectedPlacement(direction: NavigationDirection): void {
+    if (!this.session || this.isTutorialRun()) {
+      return;
+    }
+    const piece = this.getSelectedPiece();
+    const preview = this.selectedPlacementPreview;
+    if (!piece || !preview) {
+      return;
+    }
+
+    const origins = getValidOrigins(this.session.state.board, piece.def);
+    if (origins.length === 0) {
+      return;
+    }
+
+    const nextOrigin = getNextPlacementOrigin(origins, preview.origin, direction);
+    if (nextOrigin.x === preview.origin.x && nextOrigin.y === preview.origin.y) {
+      return;
+    }
+
+    this.selectedPlacementPreview = {
+      pieceId: preview.pieceId,
+      origin: nextOrigin,
+      placementsCount: origins.length
+    };
+    this.renderer.setState({
+      selectedPieceId: piece.instanceId,
+      ghost: {
+        piece: piece.def,
+        origin: nextOrigin,
+        valid: true
+      }
+    });
+    this.updateGameHint();
+  }
+
+  private placeSelectedPieceFromKeyboard(): void {
+    if (!this.session || !this.selectedPieceId) {
+      return;
+    }
+
+    if (this.isTutorialRun()) {
+      const step = this.getCurrentTutorialStep();
+      const piece = this.getSelectedPiece();
+      if (!step || !piece || piece.def.id !== step.target.pieceId) {
+        return;
+      }
+      this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
+      this.selectedInputMode = null;
+      this.commitPlacement(piece.instanceId, step.target.origin);
+      this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+      this.updateGameHint();
+      return;
+    }
+
+    const preview = this.selectedPlacementPreview;
+    const piece = this.getSelectedPiece();
+    if (!preview || !piece) {
+      return;
+    }
+
+    this.selectedPieceId = null;
+    this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
+    this.commitPlacement(piece.instanceId, preview.origin);
+    this.renderer.setState({ selectedPieceId: null, ghost: undefined });
+    this.updateGameHint();
+  }
+
   private onPointerDown(event: PointerEvent): void {
     if (!this.session || this.activeScreen !== "game") {
       return;
@@ -1234,12 +1506,9 @@ export class App {
       if (this.elements.canvas.releasePointerCapture) {
         this.elements.canvas.releasePointerCapture(event.pointerId);
       }
-      this.selectedPieceId = null;
-      this.selectedPlacementPreview = null;
+      this.clearSelection();
       this.dragCandidate = null;
       this.activePointerId = null;
-      this.renderer.setState({ selectedPieceId: null, ghost: undefined });
-      this.updateGameHint();
       this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
       return;
     }
@@ -1253,20 +1522,12 @@ export class App {
         if (!piece) {
           return;
         }
-        const preview = this.isTutorialRun() ? null : this.getPlacementPreview(piece);
-        if (!this.isTutorialRun() && !preview) {
-          this.selectedPieceId = null;
-          this.selectedPlacementPreview = null;
+        if (!this.selectPiece(pieceId, "tap", true)) {
           this.dragCandidate = null;
           this.activePointerId = null;
-          this.renderer.setState({ selectedPieceId: null, ghost: undefined });
-          this.updateGameHint();
-          this.toast.show(t(this.progress.settings.language, "toast.piece_no_room"));
           return;
         }
         this.activePointerId = event.pointerId;
-        this.selectedPieceId = pieceId;
-        this.selectedPlacementPreview = preview;
         this.dragCandidate = {
           pieceId,
           start: point,
@@ -1274,17 +1535,6 @@ export class App {
           offsetY: point.y - rect.y,
           pointerId: event.pointerId
         };
-        this.renderer.setState({
-          selectedPieceId: pieceId,
-          ghost: preview
-            ? {
-                piece: piece.def,
-                origin: preview.origin,
-                valid: true
-              }
-            : undefined
-        });
-        this.updateGameHint();
       } else if (this.selectedPieceId) {
         const cell = this.renderer.getBoardCell(point);
         if (cell) {
@@ -1309,6 +1559,9 @@ export class App {
         offsetY: point.y - rect.y
       };
       this.dragCandidate = null;
+      this.selectedPieceId = null;
+      this.selectedPlacementPreview = null;
+      this.selectedInputMode = null;
       this.renderer.setState({
         dragging: { pieceId, x: rect.x, y: rect.y },
         selectedPieceId: null,
@@ -1341,6 +1594,7 @@ export class App {
         this.dragCandidate = null;
         this.activePointerId = null;
         this.selectedPlacementPreview = null;
+        this.selectedInputMode = null;
         this.updateGameHint();
         return;
       }
@@ -1352,6 +1606,7 @@ export class App {
       this.dragCandidate = null;
       this.selectedPieceId = null;
       this.selectedPlacementPreview = null;
+      this.selectedInputMode = null;
       const dragX = point.x - this.dragging.offsetX;
       const dragY = point.y - this.dragging.offsetY;
       const ghost = this.getGhostPlacement(piece, { x: dragX, y: dragY });
@@ -1448,6 +1703,7 @@ export class App {
       if (previewMatchesSelection && preview) {
         this.selectedPieceId = null;
         this.selectedPlacementPreview = null;
+        this.selectedInputMode = null;
         this.commitPlacement(piece.instanceId, preview.origin);
         this.renderer.setState({ selectedPieceId: null, ghost: undefined });
         this.updateGameHint();
@@ -1459,6 +1715,7 @@ export class App {
     }
     this.selectedPieceId = null;
     this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
     this.commitPlacement(piece.instanceId, ghost.origin);
     this.renderer.setState({ selectedPieceId: null, ghost: undefined });
     this.updateGameHint();
@@ -1484,6 +1741,7 @@ export class App {
       return;
     }
     this.selectedPlacementPreview = null;
+    this.selectedInputMode = null;
     this.audio.playPlace();
     if (result.linesCleared > 0) {
       this.audio.playClear(result.linesCleared);
@@ -1603,6 +1861,13 @@ export class App {
       return false;
     }
     return getValidOrigins(this.session.state.board, piece.def).length > 0;
+  }
+
+  private getSelectedPiece(): ActivePiece | null {
+    if (!this.session || !this.selectedPieceId) {
+      return null;
+    }
+    return this.session.pieces.find((slot) => slot?.instanceId === this.selectedPieceId) ?? null;
   }
 
   private getBlockedPieceIds(): string[] {
@@ -1776,6 +2041,7 @@ export class App {
     if (options?.clearSelection) {
       this.selectedPieceId = null;
       this.selectedPlacementPreview = null;
+      this.selectedInputMode = null;
       this.renderer.setState({
         dragging: undefined,
         ghost: undefined,

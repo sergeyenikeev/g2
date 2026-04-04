@@ -267,6 +267,11 @@ canvas {
   touch-action: none;
 }
 
+canvas:focus-visible {
+  outline: 2px solid rgba(255, 179, 71, 0.88);
+  outline-offset: 4px;
+}
+
 .results-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
