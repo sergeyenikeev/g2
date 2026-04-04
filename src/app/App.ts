@@ -472,6 +472,7 @@ export class App {
     this.renderThemes();
     this.updateTutorialCta();
     this.updateMenuDailyStatus();
+    this.updateMenuRewardState();
     this.updateGameHint();
     this.updateResults();
     this.updateResultsTitle();
@@ -876,7 +877,7 @@ export class App {
     const eligibility = this.getMenuRewardEligibility();
     this.elements.menuReward.hidden = false;
     this.elements.menuReward.disabled = !eligibility.ok;
-    let hint = "";
+    let hint = t(lang, "hint.menu_reward", { count: MENU_REWARD_TOKENS });
     if (eligibility.reason === "rewarded_cooldown") {
       const cooldowns = this.platform.getCooldownStatus();
       const remainingMs = Math.max(0, cooldowns.rewardedAvailableAt - Date.now());
@@ -1112,11 +1113,15 @@ export class App {
       ) {
         hints.add(t(lang, "hint.continue_unavailable"));
       }
+    } else {
+      hints.add(t(lang, "hint.continue_reward"));
     }
     if (doubleEligibility.reason === "tokens_low") {
       hints.add(t(lang, "hint.double_need_tokens", { count: 2 }));
     } else if (doubleEligibility.reason === "already_used") {
       hints.add(t(lang, "hint.reward_already_used"));
+    } else if (doubleEligibility.ok) {
+      hints.add(t(lang, "hint.double_reward"));
     }
     const cooldownHint = this.getCooldownHint(continueEligibility, doubleEligibility, lang);
     if (cooldownHint) {

@@ -150,27 +150,27 @@ export class AudioManager {
   }
 
   playPlace(): void {
-    this.playSfx("place", this.varyRate(1.0, 0.04), 0.7);
+    this.playSfx("place", this.varyRate(1.0, 0.04), 0.54);
   }
 
   playClear(lines: number): void {
     const rate = this.varyRate(1 + Math.max(0, lines - 1) * 0.05, 0.02);
-    this.playSfx("clear", rate, 0.85);
+    this.playSfx("clear", rate, 0.66);
     if (lines > 1) {
-      this.playSfx("clear", rate * 1.08, 0.4, 0.04);
+      this.playSfx("clear", rate * 1.08, 0.3, 0.04);
     }
   }
 
   playCombo(): void {
-    this.playSfx("combo", this.varyRate(1.0, 0.02), 0.85);
+    this.playSfx("combo", this.varyRate(1.0, 0.02), 0.52);
   }
 
   playFail(): void {
-    this.playSfx("fail", this.varyRate(1.0, 0.02), 0.75);
+    this.playSfx("fail", this.varyRate(1.0, 0.02), 0.48);
   }
 
   playButton(): void {
-    this.playSfx("button", this.varyRate(1.0, 0.03), 0.6);
+    this.playSfx("button", this.varyRate(1.0, 0.03), 0.52);
   }
 
   private startMusicInternal(): void {

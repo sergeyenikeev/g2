@@ -1,8 +1,8 @@
-﻿# Promo Assets
+# Promo Assets
 
-- `promo/metadata.json`: общие метаданные + тексты для Yandex Games (ru/en).
-- `promo/screenshots/`: captured assets for store slots (`Landscape.png`, `Portrait.png`, `Square.png`, `Square2.png`).
-- `promo/screenshots/old/`: previous 1280x720 screenshot set.
+- `promo/metadata.json`: общие метаданные и полный набор полей для карточки Yandex Games.
+- `promo/screenshots/`: текущие медиа-черновики и архив старых выгрузок.
 - `promo/promo-images/`: placeholder cover and thumbnail SVGs.
 
-Replace SVGs with final captures before upload if needed.
+Для текстов Яндекс Игр опираемся на `promo/metadata.json` и `docs/yandex_games_release.md`.
+Автоматическая проверка лимитов и обязательных полей выполняется тестом `tests/yandex-metadata.test.ts`.
