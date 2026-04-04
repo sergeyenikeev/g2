@@ -114,6 +114,7 @@ export class App {
     hudOptions: document.getElementById("hud-options") as HTMLElement,
     hudOptionsPill: document.getElementById("hud-options-pill") as HTMLElement | null,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
+    gameHintWrap: document.getElementById("game-hint-wrap") as HTMLElement | null,
     gameHint: document.getElementById("game-tutorial-hint") as HTMLElement,
     resultsScore: document.getElementById("results-score") as HTMLElement,
     resultsBest: document.getElementById("results-best") as HTMLElement,
@@ -546,52 +547,63 @@ export class App {
     const lang = this.progress.settings.language;
     const step = this.getCurrentTutorialStep();
     if (this.activeScreen !== "game") {
-      this.elements.gameHint.hidden = true;
-      this.elements.gameHint.textContent = "";
+      this.setGameHint(null);
       return;
     }
     if (step) {
-      this.elements.gameHint.hidden = false;
-      this.elements.gameHint.textContent = t(lang, "tutorial.progress", {
-        step: step.index + 1,
-        total: step.total,
-        message: t(lang, step.messageKey)
-      });
+      this.setGameHint(
+        t(lang, "tutorial.progress", {
+          step: step.index + 1,
+          total: step.total,
+          message: t(lang, step.messageKey)
+        })
+      );
       return;
     }
     const preview = this.selectedPlacementPreview;
     if (preview && this.selectedPieceId === preview.pieceId) {
-      this.elements.gameHint.hidden = false;
-      this.elements.gameHint.textContent = t(
-        lang,
-        this.selectedInputMode === "keyboard"
-          ? preview.placementsCount === 1
-            ? "game.keyboard_hint.one"
-            : "game.keyboard_hint.many"
-          : preview.placementsCount === 1
-            ? "game.tap_hint.one"
-            : "game.tap_hint.many",
-        preview.placementsCount === 1 ? undefined : { count: preview.placementsCount }
+      this.setGameHint(
+        t(
+          lang,
+          this.selectedInputMode === "keyboard"
+            ? preview.placementsCount === 1
+              ? "game.keyboard_hint.one"
+              : "game.keyboard_hint.many"
+            : preview.placementsCount === 1
+              ? "game.tap_hint.one"
+              : "game.tap_hint.many",
+          preview.placementsCount === 1 ? undefined : { count: preview.placementsCount }
+        )
       );
       return;
     }
     if (this.session && this.session.state.mode !== "tutorial") {
       const stats = this.session.getPlacementStats();
       if (stats.totalPlacements > 0 && stats.totalPlacements <= 4) {
-        this.elements.gameHint.hidden = false;
-        this.elements.gameHint.textContent = t(lang, "game.pressure.critical", {
-          count: stats.totalPlacements
-        });
+        this.setGameHint(
+          t(lang, "game.pressure.critical", {
+            count: stats.totalPlacements
+          })
+        );
         return;
       }
       if (stats.placeablePieces === 1) {
-        this.elements.gameHint.hidden = false;
-        this.elements.gameHint.textContent = t(lang, "game.pressure.single_piece");
+        this.setGameHint(t(lang, "game.pressure.single_piece"));
         return;
       }
     }
-    this.elements.gameHint.hidden = true;
-    this.elements.gameHint.textContent = "";
+    this.setGameHint(null);
+  }
+
+  private setGameHint(message: string | null): void {
+    const nextText = message ?? "";
+    const shouldShow = nextText.length > 0;
+    if (this.elements.gameHint.hidden !== !shouldShow) {
+      this.elements.gameHint.hidden = !shouldShow;
+    }
+    if (this.elements.gameHint.textContent !== nextText) {
+      this.elements.gameHint.textContent = nextText;
+    }
   }
 
   private updateResultsTitle(): void {
@@ -1938,31 +1950,21 @@ export class App {
       return;
     }
 
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    if (viewportWidth <= 0 || viewportHeight <= 0) {
+    const wrapRect = wrap.getBoundingClientRect();
+    if (wrapRect.width <= 0 || wrapRect.height <= 0) {
       return;
     }
 
-    const hudHeight = this.elements.hud?.getBoundingClientRect().height ?? 0;
     const style = window.getComputedStyle(wrap);
     const horizontalPadding =
       parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
     const verticalPadding =
       parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-
-    const availableWidth = Math.max(viewportWidth - horizontalPadding, 0);
-    const availableHeightBelowHud = Math.max(viewportHeight - hudHeight - verticalPadding, 0);
-    const availableHeightFull = Math.max(viewportHeight - verticalPadding, 0);
-    if (availableWidth <= 0 || availableHeightFull <= 0) {
+    const targetWidth = Math.max(wrapRect.width - horizontalPadding, 0);
+    const targetHeight = Math.max(wrapRect.height - verticalPadding, 0);
+    if (targetWidth <= 0 || targetHeight <= 0) {
       return;
     }
-
-    const requiredArea = viewportWidth * viewportHeight * 0.7;
-    const belowHudArea = availableWidth * availableHeightBelowHud;
-
-    const targetWidth = availableWidth;
-    const targetHeight = belowHudArea >= requiredArea ? availableHeightBelowHud : availableHeightFull;
 
     canvas.style.width = `${Math.round(targetWidth)}px`;
     canvas.style.height = `${Math.round(targetHeight)}px`;

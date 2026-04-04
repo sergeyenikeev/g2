@@ -119,9 +119,52 @@ export class Renderer {
   }
 
   private clear(): void {
-    this.ctx.clearRect(0, 0, this.layout.width, this.layout.height);
-    this.ctx.fillStyle = this.theme.palette.background;
-    this.ctx.fillRect(0, 0, this.layout.width, this.layout.height);
+    const { width, height } = this.layout;
+    this.ctx.clearRect(0, 0, width, height);
+
+    const base = this.ctx.createLinearGradient(0, 0, width, height);
+    base.addColorStop(0, this.theme.atmosphere.skyTop);
+    base.addColorStop(0.45, this.theme.palette.background);
+    base.addColorStop(1, this.theme.atmosphere.skyBottom);
+    this.ctx.fillStyle = base;
+    this.ctx.fillRect(0, 0, width, height);
+
+    this.paintAmbientGlow(width * 0.16, height * 0.18, width * 0.54, this.theme.atmosphere.bloomA);
+    this.paintAmbientGlow(width * 0.82, height * 0.22, width * 0.44, this.theme.atmosphere.bloomB);
+    this.paintAmbientGlow(width * 0.58, height * 0.8, width * 0.5, this.theme.atmosphere.bloomC);
+
+    this.ctx.save();
+    this.ctx.strokeStyle = this.theme.atmosphere.mesh;
+    this.ctx.lineWidth = 1;
+    this.ctx.globalAlpha = 0.35;
+    for (let x = 56; x < width; x += 84) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, 0);
+      this.ctx.lineTo(x - height * 0.18, height);
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
+
+    const vignette = this.ctx.createRadialGradient(
+      width * 0.5,
+      height * 0.45,
+      width * 0.18,
+      width * 0.5,
+      height * 0.45,
+      width * 0.82
+    );
+    vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+    vignette.addColorStop(1, "rgba(2, 6, 12, 0.55)");
+    this.ctx.fillStyle = vignette;
+    this.ctx.fillRect(0, 0, width, height);
+  }
+
+  private paintAmbientGlow(x: number, y: number, radius: number, color: string): void {
+    const glow = this.ctx.createRadialGradient(x, y, 0, x, y, radius);
+    glow.addColorStop(0, color);
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    this.ctx.fillStyle = glow;
+    this.ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
   private drawBoard(): void {

@@ -2,6 +2,9 @@ type BufferKey = "place" | "clear" | "combo" | "fail" | "button" | "music";
 
 type UrlMap = Record<BufferKey, string>;
 
+const SFX_KEYS = ["place", "clear", "combo", "fail", "button"] as const;
+type SfxKey = (typeof SFX_KEYS)[number];
+
 export class AudioManager {
   private unlocked = false;
   private muted = false;
@@ -11,12 +14,12 @@ export class AudioManager {
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
   private musicGain: GainNode | null = null;
-  private buffers: Partial<Record<BufferKey, AudioBuffer>> = {};
+  private buffers: Partial<Record<SfxKey, AudioBuffer>> = {};
   private loadPromise: Promise<void> | null = null;
-  private musicSource: AudioBufferSourceNode | null = null;
+  private musicElement: HTMLAudioElement | null = null;
   private pendingMusicStart = false;
   private sfxLevel = 0.62;
-  private musicLevel = 0.28;
+  private musicLevel = 0.34;
   private urls: UrlMap = {
     place: new URL("../assets/audio/sfx_place.wav", import.meta.url).toString(),
     clear: new URL("../assets/audio/sfx_clear.wav", import.meta.url).toString(),
@@ -35,20 +38,28 @@ export class AudioManager {
       return Promise.resolve();
     }
     this.loadPromise = Promise.all(
-      (Object.keys(this.urls) as BufferKey[]).map(async (key) => {
-        const response = await fetch(this.urls[key]);
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = await ctx.decodeAudioData(arrayBuffer);
-        this.buffers[key] = buffer;
+      SFX_KEYS.map(async (key) => {
+        if (this.buffers[key]) {
+          return;
+        }
+        try {
+          const response = await fetch(this.urls[key]);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = await ctx.decodeAudioData(arrayBuffer);
+          this.buffers[key] = buffer;
+        } catch (error) {
+          console.warn(`Audio asset failed to load: ${key}`, error);
+        }
       })
     )
       .then(() => {
+        this.loadPromise = null;
         if (this.pendingMusicStart && this.musicEnabled) {
           this.startMusicInternal();
         }
-      })
-      .catch(() => {
-        this.loadPromise = null;
       });
 
     return this.loadPromise;
@@ -96,6 +107,7 @@ export class AudioManager {
     if (this.masterGain) {
       this.masterGain.gain.value = value ? 0 : 1;
     }
+    this.syncMusicVolume();
   }
 
   setSfxEnabled(value: boolean): void {
@@ -110,6 +122,7 @@ export class AudioManager {
     if (this.musicGain) {
       this.musicGain.gain.value = value ? this.musicLevel : 0;
     }
+    this.syncMusicVolume();
     if (value) {
       this.startMusic();
     } else {
@@ -125,27 +138,14 @@ export class AudioManager {
       this.pendingMusicStart = true;
       return;
     }
-    const ctx = this.ensureContext();
-    if (!ctx) {
-      return;
-    }
-    if (this.musicSource) {
-      return;
-    }
-    if (!this.buffers.music) {
-      this.pendingMusicStart = true;
-      void this.load();
-      return;
-    }
     this.startMusicInternal();
   }
 
   stopMusic(): void {
     this.pendingMusicStart = false;
-    if (this.musicSource) {
-      this.musicSource.stop();
-      this.musicSource.disconnect();
-      this.musicSource = null;
+    if (this.musicElement) {
+      this.musicElement.pause();
+      this.musicElement.currentTime = 0;
     }
   }
 
@@ -177,27 +177,37 @@ export class AudioManager {
     if (!this.musicEnabled || this.muted) {
       return;
     }
-    const ctx = this.ensureContext();
-    const buffer = this.buffers.music;
-    if (!ctx || !buffer || !this.musicGain) {
+    const music = this.ensureMusicElement();
+    if (!music) {
       return;
     }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(this.musicGain);
-    source.start();
-    this.musicSource = source;
+    this.syncMusicVolume();
+    if (!music.paused) {
+      this.pendingMusicStart = false;
+      return;
+    }
+    const playPromise = music.play();
+    if (playPromise) {
+      void playPromise
+        .then(() => {
+          this.pendingMusicStart = false;
+        })
+        .catch(() => {
+          this.pendingMusicStart = true;
+        });
+      return;
+    }
     this.pendingMusicStart = false;
   }
 
-  private playSfx(key: BufferKey, rate: number, volume: number, delay = 0): void {
+  private playSfx(key: SfxKey, rate: number, volume: number, delay = 0): void {
     if (this.muted || !this.sfxEnabled) {
       return;
     }
     const ctx = this.ensureContext();
     const buffer = this.buffers[key];
     if (!ctx || !buffer || !this.sfxGain) {
+      this.playSfxFallback(key, rate, volume, delay);
       void this.load();
       return;
     }
@@ -209,6 +219,42 @@ export class AudioManager {
     source.connect(gainNode);
     gainNode.connect(this.sfxGain);
     source.start(ctx.currentTime + delay);
+  }
+
+  private playSfxFallback(key: SfxKey, rate: number, volume: number, delay = 0): void {
+    const play = () => {
+      const audio = new Audio(this.urls[key]);
+      audio.preload = "auto";
+      audio.volume = Math.min(1, Math.max(0, volume * 0.85));
+      audio.playbackRate = rate;
+      void audio.play().catch(() => {
+      });
+    };
+    if (delay > 0) {
+      window.setTimeout(play, delay * 1000);
+      return;
+    }
+    play();
+  }
+
+  private ensureMusicElement(): HTMLAudioElement | null {
+    if (this.musicElement) {
+      return this.musicElement;
+    }
+    const music = new Audio(this.urls.music);
+    music.preload = "auto";
+    music.loop = true;
+    music.setAttribute("playsinline", "true");
+    this.musicElement = music;
+    this.syncMusicVolume();
+    return music;
+  }
+
+  private syncMusicVolume(): void {
+    if (!this.musicElement) {
+      return;
+    }
+    this.musicElement.volume = this.musicEnabled && !this.muted ? this.musicLevel : 0;
   }
 
   private varyRate(base: number, spread: number): number {
