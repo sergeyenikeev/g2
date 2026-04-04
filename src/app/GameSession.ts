@@ -1,4 +1,4 @@
-import { canAnyPieceFit, createBoard, getPlaceablePieces } from "../core/board";
+import { canAnyPieceFit, createBoard, getPlaceablePieces, getValidOrigins } from "../core/board";
 import { applyMove, createEmptyState, GameState, MoveResult } from "../core/game";
 import { PieceGenerator } from "../core/generator";
 import { getPieceById, PIECES } from "../core/pieces";
@@ -15,6 +15,11 @@ const CONTINUE_PREFERRED_IDS = [
   "l_3x2",
   "j_3x2"
 ] as const;
+
+export interface PlacementStats {
+  placeablePieces: number;
+  totalPlacements: number;
+}
 
 export class GameSession {
   private generator: PieceGenerator;
@@ -62,6 +67,37 @@ export class GameSession {
 
   canOfferContinue(): boolean {
     return this.buildContinueLoadout().length > 0;
+  }
+
+  getPiecePlacementCounts(): Record<string, number> {
+    const counts: Record<string, number> = {};
+
+    for (const piece of this.pieces) {
+      if (!piece) {
+        continue;
+      }
+      counts[piece.instanceId] = getValidOrigins(this.state.board, piece.def).length;
+    }
+
+    return counts;
+  }
+
+  getPlacementStats(): PlacementStats {
+    const counts = this.getPiecePlacementCounts();
+    let placeablePieces = 0;
+    let totalPlacements = 0;
+
+    for (const placements of Object.values(counts)) {
+      if (placements > 0) {
+        placeablePieces += 1;
+        totalPlacements += placements;
+      }
+    }
+
+    return {
+      placeablePieces,
+      totalPlacements
+    };
   }
 
   setContinuePieces(): boolean {

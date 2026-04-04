@@ -188,6 +188,16 @@ body {
   letter-spacing: 0.5px;
 }
 
+.pill--warning {
+  border-color: rgba(255, 179, 71, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 179, 71, 0.08);
+}
+
+.pill--critical {
+  border-color: rgba(255, 107, 107, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.12);
+}
+
 .hud {
   display: flex;
   justify-content: space-between;

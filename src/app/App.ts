@@ -6,7 +6,7 @@ import { ActivePiece, GameMode, Point } from "../core/types";
 import { AudioManager } from "./AudioManager";
 import { DebugOverlay } from "./DebugOverlay";
 import { GameSession } from "./GameSession";
-import { Renderer } from "./Renderer";
+import { Renderer, type RendererState } from "./Renderer";
 import { ScreenManager } from "./ScreenManager";
 import { ThemeManager, THEMES } from "./ThemeManager";
 import { Toast } from "./Toast";
@@ -109,6 +109,8 @@ export class App {
     menuDailyStatus: document.getElementById("menu-daily-status") as HTMLElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
+    hudOptions: document.getElementById("hud-options") as HTMLElement,
+    hudOptionsPill: document.getElementById("hud-options-pill") as HTMLElement | null,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
     gameHint: document.getElementById("game-tutorial-hint") as HTMLElement,
     resultsScore: document.getElementById("results-score") as HTMLElement,
@@ -171,7 +173,7 @@ export class App {
     this.renderer = new Renderer(this.elements.canvas, theme, {
       board: this.session?.state.board ?? Array.from({ length: 10 }, () => Array(10).fill(0)),
       pieces: this.session?.pieces ?? [null, null, null],
-      blockedPieceIds: this.getBlockedPieceIds()
+      ...this.getRendererPieceMeta()
     });
 
     this.attachEvents();
@@ -455,7 +457,7 @@ export class App {
     this.renderer.setState({
       board: this.session.state.board,
       pieces: this.session.pieces,
-      blockedPieceIds: this.getBlockedPieceIds(),
+      ...this.getRendererPieceMeta(),
       ghost: undefined,
       guideGhost: this.getTutorialGuideGhost(),
       dragging: undefined,
@@ -491,6 +493,21 @@ export class App {
         preview.placementsCount === 1 ? undefined : { count: preview.placementsCount }
       );
       return;
+    }
+    if (this.session && this.session.state.mode !== "tutorial") {
+      const stats = this.session.getPlacementStats();
+      if (stats.totalPlacements > 0 && stats.totalPlacements <= 4) {
+        this.elements.gameHint.hidden = false;
+        this.elements.gameHint.textContent = t(lang, "game.pressure.critical", {
+          count: stats.totalPlacements
+        });
+        return;
+      }
+      if (stats.placeablePieces === 1) {
+        this.elements.gameHint.hidden = false;
+        this.elements.gameHint.textContent = t(lang, "game.pressure.single_piece");
+        return;
+      }
     }
     this.elements.gameHint.hidden = true;
     this.elements.gameHint.textContent = "";
@@ -549,7 +566,7 @@ export class App {
     this.renderer.setState({
       board: this.session.state.board,
       pieces: this.session.pieces,
-      blockedPieceIds: this.getBlockedPieceIds(),
+      ...this.getRendererPieceMeta(),
       ghost: undefined,
       guideGhost: this.getTutorialGuideGhost(),
       dragging: undefined,
@@ -676,9 +693,13 @@ export class App {
     if (!this.session) {
       return;
     }
+    const stats = this.session.getPlacementStats();
     this.elements.hudScore.textContent = `${this.session.state.score}`;
     this.elements.hudCombo.textContent = `x${this.session.state.combo.toFixed(2)}`;
+    this.elements.hudOptions.textContent = `${stats.totalPlacements}`;
     this.elements.hudTokens.textContent = `${this.progress.tokens}`;
+    this.elements.hudOptionsPill?.classList.toggle("pill--warning", stats.totalPlacements > 4 && stats.totalPlacements <= 12);
+    this.elements.hudOptionsPill?.classList.toggle("pill--critical", stats.totalPlacements > 0 && stats.totalPlacements <= 4);
   }
 
   private updateResults(): void {
@@ -1089,7 +1110,7 @@ export class App {
       this.renderer.setState({
         board: this.session?.state.board ?? Array.from({ length: 10 }, () => Array(10).fill(0)),
         pieces: this.session?.pieces ?? [null, null, null],
-        blockedPieceIds: this.getBlockedPieceIds(),
+        ...this.getRendererPieceMeta(),
         ghost: undefined,
         dragging: undefined,
         selectedPieceId: null
@@ -1473,7 +1494,7 @@ export class App {
     this.renderer.setState({
       board: result.state.board,
       pieces: this.session.pieces,
-      blockedPieceIds: this.getBlockedPieceIds(),
+      ...this.getRendererPieceMeta(),
       guideGhost: undefined,
       flashLines: {
         rows: result.rows,
@@ -1585,12 +1606,25 @@ export class App {
   }
 
   private getBlockedPieceIds(): string[] {
-    if (!this.session || this.isTutorialRun()) {
-      return [];
-    }
-    return this.session.pieces.flatMap((piece) =>
-      piece && !this.isPiecePlaceable(piece) ? [piece.instanceId] : []
+    const placementCounts = this.getPiecePlacementCounts();
+    return Object.entries(placementCounts).flatMap(([pieceId, placements]) =>
+      placements === 0 ? [pieceId] : []
     );
+  }
+
+  private getPiecePlacementCounts(): Record<string, number> {
+    if (!this.session || this.isTutorialRun()) {
+      return {};
+    }
+    return this.session.getPiecePlacementCounts();
+  }
+
+  private getRendererPieceMeta(): Pick<RendererState, "blockedPieceIds" | "placementCounts"> {
+    const placementCounts = this.getPiecePlacementCounts();
+    return {
+      blockedPieceIds: this.getBlockedPieceIds(),
+      placementCounts
+    };
   }
 
   private getSelectedGhost():

@@ -78,4 +78,30 @@ describe("game state", () => {
     expect(session.canPlaceAny()).toBe(true);
     expect(session.pieces.every((piece) => piece?.def.id === "dot")).toBe(true);
   });
+
+  it("reports how many placements are left across current pieces", () => {
+    const session = new GameSession("play", "seed", createSeededRng("stats"), 0);
+    const board = createBoard();
+    for (let y = 0; y < 10; y += 1) {
+      for (let x = 0; x < 10; x += 1) {
+        board[y][x] = 1;
+      }
+    }
+    board[4][4] = 0;
+    session.state = { ...session.state, board };
+    session.pieces = [
+      { instanceId: "a", def: dot },
+      { instanceId: "b", def: line3h },
+      null
+    ];
+
+    expect(session.getPlacementStats()).toEqual({
+      placeablePieces: 1,
+      totalPlacements: 1
+    });
+    expect(session.getPiecePlacementCounts()).toEqual({
+      a: 1,
+      b: 0
+    });
+  });
 });

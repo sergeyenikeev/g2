@@ -27,6 +27,7 @@ export interface RendererState {
   board: Board;
   pieces: Array<ActivePiece | null>;
   blockedPieceIds?: string[];
+  placementCounts?: Record<string, number>;
   dragging?: { pieceId: string; x: number; y: number };
   selectedPieceId?: string | null;
   ghost?: { piece: PieceDef; origin: Point; valid: boolean };
@@ -227,6 +228,7 @@ export class Renderer {
     const { pieces, dragging, selectedPieceId } = this.state;
     const { cellSize, slotCenters } = this.layout;
     const blockedPieceIds = new Set(this.state.blockedPieceIds ?? []);
+    const placementCounts = this.state.placementCounts ?? {};
     this.pieceRects.clear();
 
     pieces.forEach((piece, index) => {
@@ -270,6 +272,9 @@ export class Renderer {
       }
 
       this.drawPieceAt(piece.def, startX, startY, cellSize, false, blocked);
+      if (piece.instanceId in placementCounts) {
+        this.drawPlacementBadge(startX + width, startY, placementCounts[piece.instanceId]);
+      }
     });
 
     if (dragging) {
@@ -301,6 +306,47 @@ export class Renderer {
       const py = y + cell.y * cellSize;
       this.drawBlock(px, py, cellSize, floating, muted);
     }
+  }
+
+  private drawPlacementBadge(x: number, y: number, count: number): void {
+    const fontSize = Math.max(11, Math.round(this.layout.cellSize * 0.46));
+    const padX = Math.max(6, Math.round(fontSize * 0.45));
+    const badgeHeight = Math.max(18, Math.round(fontSize * 1.55));
+    const label = `${count}`;
+
+    this.ctx.save();
+    this.ctx.font = `700 ${fontSize}px "Trebuchet MS", "Verdana", sans-serif`;
+    const badgeWidth = Math.max(
+      badgeHeight,
+      Math.ceil(this.ctx.measureText(label).width + padX * 2)
+    );
+    const badgeX = x - badgeWidth * 0.78;
+    const badgeY = y - badgeHeight * 0.42;
+
+    let fillStyle = this.theme.palette.board;
+    let strokeStyle = this.theme.palette.accent;
+    let textStyle = "#f8f9fb";
+
+    if (count === 0) {
+      fillStyle = "#33161a";
+      strokeStyle = "rgba(255, 132, 132, 0.88)";
+      textStyle = "#ffd8d8";
+    } else if (count <= 2) {
+      strokeStyle = this.theme.palette.accentAlt;
+    }
+
+    this.ctx.fillStyle = fillStyle;
+    this.ctx.strokeStyle = strokeStyle;
+    this.ctx.lineWidth = 2;
+    this.ctx.shadowBlur = count === 0 ? 0 : 10;
+    this.ctx.shadowColor = strokeStyle;
+    this.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2, true, true);
+
+    this.ctx.fillStyle = textStyle;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillText(label, badgeX + badgeWidth / 2, badgeY + badgeHeight / 2 + 0.5);
+    this.ctx.restore();
   }
 
   private drawBlock(x: number, y: number, size: number, floating = false, muted = false): void {
