@@ -4,6 +4,9 @@ import { logger } from "../utils/logger";
 export type PlatformId = "yandex" | "vkplay" | "rustore" | "generic";
 export type AdType = "midgame" | "rewarded";
 export type RewardedKind = "continue" | "double_tokens" | "rewarded";
+export type StorageScope = "device" | "account";
+export type LeaderboardBoard = "overall" | "daily";
+export type LeaderboardSubmissionState = "enabled" | "auth_required" | "unavailable";
 
 export interface AdContext {
   pause: () => void;
@@ -17,6 +20,47 @@ export interface AdResult {
   reason?: string;
 }
 
+export interface PlatformLeaderboardEntry {
+  rank: number;
+  score: number;
+  playerName: string;
+  extraData?: string | null;
+  playerId?: string | null;
+}
+
+export interface PlatformLeaderboardSnapshot {
+  board: LeaderboardBoard;
+  title?: string;
+  entries: PlatformLeaderboardEntry[];
+}
+
+export interface PlatformLeaderboardInfo {
+  board: LeaderboardBoard;
+  enabled: boolean;
+  provider: PlatformId | null;
+  submissionState: LeaderboardSubmissionState;
+}
+
+export interface PlatformLeaderboardSubmitPayload {
+  board: LeaderboardBoard;
+  score: number;
+  extraData?: string;
+}
+
+export interface PlatformLeaderboardSubmitResult {
+  submitted: boolean;
+  reason?: string;
+}
+
+export interface PlatformPlayerProfile {
+  supported: boolean;
+  provider: PlatformId | null;
+  authorized: boolean;
+  displayName: string | null;
+  avatarUrl?: string | null;
+  playerId?: string | null;
+}
+
 export interface PlatformAdapter {
   id: PlatformId;
   init: () => Promise<void>;
@@ -27,9 +71,17 @@ export interface PlatformAdapter {
   showAd: (type: AdType, ctx: AdContext) => Promise<AdResult>;
   hasAdblock?: () => Promise<boolean>;
   getLanguage?: () => Promise<string | null>;
+  storageScope?: StorageScope;
   storageGet?: (key: string) => Promise<string | null>;
   storageSet?: (key: string, value: string) => Promise<void>;
   storageRemove?: (key: string) => Promise<void>;
+  getLeaderboardInfo?: (board: LeaderboardBoard) => Promise<PlatformLeaderboardInfo>;
+  getLeaderboardSnapshot?: (board: LeaderboardBoard) => Promise<PlatformLeaderboardSnapshot | null>;
+  submitLeaderboardScore?: (
+    payload: PlatformLeaderboardSubmitPayload
+  ) => Promise<PlatformLeaderboardSubmitResult>;
+  getPlayerProfile?: () => Promise<PlatformPlayerProfile>;
+  requestPlayerAuth?: () => Promise<PlatformPlayerProfile>;
   track: (eventName: string, payload?: Record<string, unknown>) => void;
   happytime?: () => void;
 }
@@ -46,9 +98,17 @@ export interface PlatformBridge {
   markContinueUsed: () => void;
   hasAdblock: () => Promise<boolean>;
   getLanguage: () => Promise<string | null>;
+  getStorageScope: () => StorageScope;
   storageGet: (key: string) => Promise<string | null>;
   storageSet: (key: string, value: string) => Promise<void>;
   storageRemove?: (key: string) => Promise<void>;
+  getLeaderboardInfo: (board: LeaderboardBoard) => Promise<PlatformLeaderboardInfo>;
+  getLeaderboardSnapshot: (board: LeaderboardBoard) => Promise<PlatformLeaderboardSnapshot | null>;
+  submitLeaderboardScore: (
+    payload: PlatformLeaderboardSubmitPayload
+  ) => Promise<PlatformLeaderboardSubmitResult>;
+  getPlayerProfile: () => Promise<PlatformPlayerProfile>;
+  requestPlayerAuth: () => Promise<PlatformPlayerProfile>;
   track: (eventName: string, payload?: Record<string, unknown>) => void;
   happytime?: () => void;
   getCooldownStatus: () => { rewardedAvailableAt: number; continueAvailableAt: number };
@@ -104,11 +164,13 @@ export class PlatformBridgeImpl implements PlatformBridge {
   private continueCooldownUntil = 0;
   private fallbackStorage: StorageLike;
   private clock: Clock;
+  private storageScope: StorageScope;
 
   constructor(private adapter: PlatformAdapter, options?: { clock?: Clock }) {
     this.id = adapter.id;
     this.fallbackStorage = getLocalStorage();
     this.clock = options?.clock ?? { now: () => Date.now() };
+    this.storageScope = adapter.storageScope ?? "device";
   }
 
   async init(): Promise<void> {
@@ -281,6 +343,114 @@ export class PlatformBridgeImpl implements PlatformBridge {
     } catch (error) {
       logger.warn("language_detect_fail", { platform: this.id, error: toErrorString(error) });
       return null;
+    }
+  }
+
+  getStorageScope(): StorageScope {
+    return this.storageScope;
+  }
+
+  async getLeaderboardInfo(board: LeaderboardBoard): Promise<PlatformLeaderboardInfo> {
+    if (!this.adapter.getLeaderboardInfo) {
+      return {
+        board,
+        enabled: false,
+        provider: null,
+        submissionState: "unavailable"
+      };
+    }
+    try {
+      return await this.adapter.getLeaderboardInfo(board);
+    } catch (error) {
+      logger.warn("leaderboard_info_fail", {
+        platform: this.id,
+        board,
+        error: toErrorString(error)
+      });
+      return {
+        board,
+        enabled: false,
+        provider: null,
+        submissionState: "unavailable"
+      };
+    }
+  }
+
+  async getLeaderboardSnapshot(board: LeaderboardBoard): Promise<PlatformLeaderboardSnapshot | null> {
+    if (!this.adapter.getLeaderboardSnapshot) {
+      return null;
+    }
+    try {
+      return await this.adapter.getLeaderboardSnapshot(board);
+    } catch (error) {
+      logger.warn("leaderboard_snapshot_fail", {
+        platform: this.id,
+        board,
+        error: toErrorString(error)
+      });
+      return null;
+    }
+  }
+
+  async submitLeaderboardScore(
+    payload: PlatformLeaderboardSubmitPayload
+  ): Promise<PlatformLeaderboardSubmitResult> {
+    if (!this.adapter.submitLeaderboardScore) {
+      return { submitted: false, reason: "unavailable" };
+    }
+    try {
+      return await this.adapter.submitLeaderboardScore(payload);
+    } catch (error) {
+      logger.warn("leaderboard_submit_fail", {
+        platform: this.id,
+        board: payload.board,
+        error: toErrorString(error)
+      });
+      return { submitted: false, reason: "exception" };
+    }
+  }
+
+  async getPlayerProfile(): Promise<PlatformPlayerProfile> {
+    if (!this.adapter.getPlayerProfile) {
+      return {
+        supported: false,
+        provider: null,
+        authorized: false,
+        displayName: null,
+        avatarUrl: null,
+        playerId: null
+      };
+    }
+    try {
+      return await this.adapter.getPlayerProfile();
+    } catch (error) {
+      logger.warn("player_profile_fail", {
+        platform: this.id,
+        error: toErrorString(error)
+      });
+      return {
+        supported: false,
+        provider: this.id,
+        authorized: false,
+        displayName: null,
+        avatarUrl: null,
+        playerId: null
+      };
+    }
+  }
+
+  async requestPlayerAuth(): Promise<PlatformPlayerProfile> {
+    if (!this.adapter.requestPlayerAuth) {
+      return this.getPlayerProfile();
+    }
+    try {
+      return await this.adapter.requestPlayerAuth();
+    } catch (error) {
+      logger.warn("player_auth_fail", {
+        platform: this.id,
+        error: toErrorString(error)
+      });
+      return this.getPlayerProfile();
     }
   }
 

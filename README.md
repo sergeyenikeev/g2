@@ -26,6 +26,15 @@ npm run dev:vkplay
 npm run dev:rustore
 ```
 
+For Yandex Games leaderboards, set technical names in `.env.yandex`:
+
+```env
+VITE_YANDEX_LEADERBOARD_ALL_TIME=lumelines_all_time
+VITE_YANDEX_LEADERBOARD_DAILY=lumelines_daily
+```
+
+Yandex account sign-in is optional: without it the game still works normally and the player can keep using the manual name field in settings. After sign-in, the player can separately choose whether to use the Yandex display name.
+
 If PowerShell blocks `npm.ps1`, use `npm.cmd` instead:
 
 ```powershell
@@ -92,6 +101,7 @@ The following keys are stored via the platform bridge with localStorage fallback
 - `rewardCooldownUntil`
 - `runsCount`
 - `tutorialCompleted`
+- `loginReward`
 - `settings`
 - `tokens`
 

@@ -1,5 +1,6 @@
 ﻿import { createDailySeed, dailyBestKey, formatDateKey } from "../core/daily";
 import { applyPlacement, canPlace, getValidOrigins, placementOccupiesCell } from "../core/board";
+import { claimLoginReward, getLoginRewardStatus } from "../core/loginRewards";
 import { tokensFromScore } from "../core/game";
 import { createSeededRng } from "../core/rng";
 import { ActivePiece, GameMode, Point } from "../core/types";
@@ -13,9 +14,16 @@ import { ThemeManager, THEMES } from "./ThemeManager";
 import { Toast } from "./Toast";
 import { getTutorialStep, getTutorialStepsCount, isTutorialTargetMove, TutorialStep } from "./tutorial";
 import { logger } from "../utils/logger";
-import type { PlatformBridge, RewardedKind } from "../platform/bridge";
+import type { PlatformBridge, PlatformPlayerProfile, RewardedKind } from "../platform/bridge";
+import { LeaderboardService, type LeaderboardMeta } from "./LeaderboardService";
 import { StorageService } from "../services/storage";
 import { applyTranslations, getDefaultLanguage, Language, normalizeLanguage, t } from "./i18n";
+import {
+  createEmptyLeaderboard,
+  LeaderboardEntry,
+  LeaderboardState,
+  recordLeaderboardEntry
+} from "./leaderboard";
 import {
   createDefaultProgress,
   detectTouchSupport,
@@ -29,6 +37,7 @@ type ScreenId =
   | "game"
   | "pause"
   | "results"
+  | "leaderboard"
   | "themes"
   | "settings";
 
@@ -45,11 +54,35 @@ export class App {
   private audio = new AudioManager();
   private platform: PlatformBridge;
   private storage!: StorageService;
+  private leaderboardService!: LeaderboardService;
   private session: GameSession | null = null;
   private progress: ProgressState = createDefaultProgress({
     platformId: "generic",
     isTouch: detectTouchSupport()
   });
+  private leaderboard: LeaderboardState = createEmptyLeaderboard();
+  private leaderboardMeta: LeaderboardMeta = {
+    overall: {
+      source: "local",
+      scope: "device",
+      provider: null,
+      submissionState: "unavailable"
+    },
+    daily: {
+      source: "local",
+      scope: "device",
+      provider: null,
+      submissionState: "unavailable"
+    }
+  };
+  private platformPlayer: PlatformPlayerProfile = {
+    supported: false,
+    provider: null,
+    authorized: false,
+    displayName: null,
+    avatarUrl: null,
+    playerId: null
+  };
   private activeScreen: ScreenId = "loading";
   private returnScreen: ScreenId = "menu";
   private runTokens = 0;
@@ -65,6 +98,10 @@ export class App {
   private runDurationMs = 0;
   private runBonusTokens = 0;
   private runDailyImproved = false;
+  private runLeaderboardRank: number | null = null;
+  private runDailyLeaderboardRank: number | null = null;
+  private pendingLeaderboardEntry: LeaderboardEntry | null = null;
+  private lastRecordedLeaderboardEntryId: string | null = null;
   private currentDailyKey = dailyBestKey(new Date());
   private currentDailyBest: number | null = null;
   private tutorialStepIndex = -1;
@@ -105,12 +142,16 @@ export class App {
     menuBest: document.getElementById("menu-best") as HTMLElement,
     menuTokens: document.getElementById("menu-tokens") as HTMLElement,
     menuTutorial: document.getElementById("btn-tutorial") as HTMLButtonElement,
+    menuLeaderboard: document.getElementById("btn-leaderboard") as HTMLButtonElement,
     resultsTitle: document.querySelector("#screen-results .title") as HTMLElement,
     menuReward: document.getElementById("btn-menu-reward") as HTMLButtonElement,
     menuRewardHint: document.getElementById("menu-reward-hint") as HTMLElement,
     menuDailyStatus: document.getElementById("menu-daily-status") as HTMLElement,
+    menuLoginRewardStatus: document.getElementById("menu-login-reward-status") as HTMLElement,
     hudScore: document.getElementById("hud-score") as HTMLElement,
     hudCombo: document.getElementById("hud-combo") as HTMLElement,
+    hudLevel: document.getElementById("hud-level") as HTMLElement,
+    hudLevelGoal: document.getElementById("hud-level-goal") as HTMLElement,
     hudOptions: document.getElementById("hud-options") as HTMLElement,
     hudOptionsPill: document.getElementById("hud-options-pill") as HTMLElement | null,
     hudTokens: document.getElementById("hud-tokens") as HTMLElement,
@@ -121,16 +162,28 @@ export class App {
     resultsTokens: document.getElementById("results-tokens") as HTMLElement,
     resultsLines: document.getElementById("results-lines") as HTMLElement,
     resultsMoves: document.getElementById("results-moves") as HTMLElement,
+    resultsLevel: document.getElementById("results-level") as HTMLElement,
     resultsDuration: document.getElementById("results-duration") as HTMLElement,
     resultsPeakCombo: document.getElementById("results-peak-combo") as HTMLElement,
     resultsBestClear: document.getElementById("results-best-clear") as HTMLElement,
     resultsSummary: document.getElementById("results-summary") as HTMLElement,
     resultsHint: document.getElementById("results-hint") as HTMLElement,
+    leaderboardAllTime: document.getElementById("leaderboard-all-time") as HTMLElement,
+    leaderboardDaily: document.getElementById("leaderboard-daily") as HTMLElement,
+    leaderboardHint: document.getElementById("leaderboard-hint") as HTMLElement,
+    leaderboardSourceBadge: document.getElementById("leaderboard-source-badge") as HTMLElement,
+    leaderboardClear: document.getElementById("btn-leaderboard-clear") as HTMLButtonElement,
     adblockBanner: document.getElementById("adblock-banner") as HTMLElement,
     themesGrid: document.getElementById("themes-grid") as HTMLElement,
     settingMusic: document.getElementById("setting-music") as HTMLInputElement,
     settingSfx: document.getElementById("setting-sfx") as HTMLInputElement,
     settingTap: document.getElementById("setting-tap") as HTMLInputElement,
+    settingPlayerName: document.getElementById("setting-player-name") as HTMLInputElement,
+    settingUsePlatformName: document.getElementById("setting-use-platform-name") as HTMLInputElement | null,
+    settingsAccount: document.getElementById("settings-account") as HTMLElement | null,
+    settingsAccountStatus: document.getElementById("settings-account-status") as HTMLElement | null,
+    settingsAccountHint: document.getElementById("settings-account-hint") as HTMLElement | null,
+    settingsAccountAuth: document.getElementById("btn-settings-account-auth") as HTMLButtonElement | null,
     settingLanguage: document.getElementById("setting-language") as HTMLSelectElement,
     settingLanguageRow: document
       .getElementById("setting-language")
@@ -152,6 +205,7 @@ export class App {
       game: document.getElementById("screen-game") as HTMLElement,
       pause: document.getElementById("screen-pause") as HTMLElement,
       results: document.getElementById("screen-results") as HTMLElement,
+      leaderboard: document.getElementById("screen-leaderboard") as HTMLElement,
       themes: document.getElementById("screen-themes") as HTMLElement,
       settings: document.getElementById("screen-settings") as HTMLElement
     });
@@ -168,7 +222,9 @@ export class App {
         }
       }
     });
+    this.leaderboardService = new LeaderboardService(this.storage, this.platform);
     await this.loadProgress();
+    await this.refreshPlatformPlayer({ syncName: true });
     this.applyLanguage();
     this.configureLanguageSetting();
 
@@ -196,6 +252,7 @@ export class App {
     const play = document.getElementById("btn-play");
     const tutorial = document.getElementById("btn-tutorial");
     const daily = document.getElementById("btn-daily");
+    const leaderboard = document.getElementById("btn-leaderboard");
     const menuReward = document.getElementById("btn-menu-reward");
     const themes = document.getElementById("btn-themes");
     const settings = document.getElementById("btn-settings");
@@ -208,26 +265,34 @@ export class App {
     const playAgain = document.getElementById("btn-play-again");
     const continueBtn = document.getElementById("btn-continue");
     const doubleBtn = document.getElementById("btn-double");
+    const leaderboardClear = document.getElementById("btn-leaderboard-clear");
+    const leaderboardBack = document.getElementById("btn-leaderboard-back");
     const themesBack = document.getElementById("btn-themes-back");
     const settingsClose = document.getElementById("btn-settings-close");
 
     play?.addEventListener("click", () => this.handleButton(() => void this.startRun("play")));
     tutorial?.addEventListener("click", () => this.handleButton(() => void this.startRun("tutorial")));
     daily?.addEventListener("click", () => this.handleButton(() => void this.startRun("daily")));
+    leaderboard?.addEventListener("click", () => this.handleButton(() => void this.openLeaderboard()));
     menuReward?.addEventListener("click", () => this.handleButton(() => void this.tryMenuRewarded()));
     themes?.addEventListener("click", () => this.handleButton(() => this.openThemes()));
-    settings?.addEventListener("click", () => this.handleButton(() => this.openSettings("menu")));
+    settings?.addEventListener("click", () => this.handleButton(() => void this.openSettings("menu")));
     pause?.addEventListener("click", () => this.handleButton(() => this.pauseGame()));
     resume?.addEventListener("click", () => this.handleButton(() => this.resumeGame()));
     restart?.addEventListener("click", () => this.handleButton(() => this.restartRun()));
     pauseMenu?.addEventListener("click", () => this.handleButton(() => this.returnToMenu()));
-    pauseSettings?.addEventListener("click", () => this.handleButton(() => this.openSettings("pause")));
+    pauseSettings?.addEventListener("click", () => this.handleButton(() => void this.openSettings("pause")));
     resultsMenu?.addEventListener("click", () => this.handleButton(() => this.returnToMenu()));
     playAgain?.addEventListener("click", () => this.handleButton(() => void this.playAgain()));
     continueBtn?.addEventListener("click", () => this.handleButton(() => this.tryContinue()));
     doubleBtn?.addEventListener("click", () => this.handleButton(() => this.tryDoubleTokens()));
+    leaderboardClear?.addEventListener("click", () => this.handleButton(() => void this.clearLeaderboard()));
+    leaderboardBack?.addEventListener("click", () => this.handleButton(() => this.showScreen("menu")));
     themesBack?.addEventListener("click", () => this.handleButton(() => this.showScreen("menu")));
     settingsClose?.addEventListener("click", () => this.handleButton(() => this.closeSettings()));
+    this.elements.settingsAccountAuth?.addEventListener("click", () =>
+      this.handleButton(() => void this.requestOptionalPlatformAuth())
+    );
 
     this.elements.settingMusic.addEventListener("change", () => {
       this.progress.settings.musicEnabled = this.elements.settingMusic.checked;
@@ -242,6 +307,22 @@ export class App {
     this.elements.settingTap.addEventListener("change", () => {
       this.progress.settings.tapToPlace = this.elements.settingTap.checked;
       this.saveProgress();
+    });
+
+    this.elements.settingPlayerName.addEventListener("input", () => {
+      this.progress.settings.playerName = this.sanitizePlayerName(this.elements.settingPlayerName.value, {
+        trimStart: true
+      });
+      if (this.elements.settingPlayerName.value !== this.progress.settings.playerName) {
+        this.elements.settingPlayerName.value = this.progress.settings.playerName;
+      }
+      this.saveProgress();
+    });
+    this.elements.settingUsePlatformName?.addEventListener("change", () => {
+      this.progress.settings.usePlatformPlayerName = Boolean(this.elements.settingUsePlatformName?.checked);
+      this.updatePlayerNameField();
+      this.renderPlatformAccount();
+      void this.saveProgress();
     });
 
     document.addEventListener("visibilitychange", () => this.handleVisibilityChange());
@@ -282,18 +363,32 @@ export class App {
 
   private async loadProgress(): Promise<void> {
     const todayDailyKey = dailyBestKey(new Date());
-    const [bestScore, tokens, themesUnlocked, runsCount, tutorialCompleted, settings, platformLanguage] =
+    const dateKey = formatDateKey(new Date());
+    const [
+      bestScore,
+      tokens,
+      themesUnlocked,
+      runsCount,
+      tutorialCompleted,
+      loginReward,
+      settings,
+      platformLanguage
+    ] =
       await Promise.all([
-      this.storage.getOptional<unknown>("bestScore"),
-      this.storage.getOptional<unknown>("tokens"),
-      this.storage.getOptional<unknown>("themesUnlocked"),
-      this.storage.getOptional<unknown>("runsCount"),
-      this.storage.getOptional<unknown>("tutorialCompleted"),
-      this.storage.getOptional<unknown>("settings"),
-      this.platform.getLanguage()
-    ]);
+        this.storage.getOptional<unknown>("bestScore"),
+        this.storage.getOptional<unknown>("tokens"),
+        this.storage.getOptional<unknown>("themesUnlocked"),
+        this.storage.getOptional<unknown>("runsCount"),
+        this.storage.getOptional<unknown>("tutorialCompleted"),
+        this.storage.getOptional<unknown>("loginReward"),
+        this.storage.getOptional<unknown>("settings"),
+        this.platform.getLanguage()
+      ]);
     this.currentDailyKey = todayDailyKey;
     this.currentDailyBest = await this.storage.getOptional<number>(todayDailyKey);
+    const leaderboardLoad = await this.leaderboardService.load(dateKey);
+    this.leaderboard = leaderboardLoad.state;
+    this.leaderboardMeta = leaderboardLoad.meta;
 
     this.progress = normalizeStoredProgress(
       {
@@ -302,6 +397,7 @@ export class App {
         themesUnlocked,
         runsCount,
         tutorialCompleted,
+        loginReward,
         settings
       },
       {
@@ -314,8 +410,16 @@ export class App {
     this.elements.settingMusic.checked = this.progress.settings.musicEnabled;
     this.elements.settingSfx.checked = this.progress.settings.sfxEnabled;
     this.elements.settingTap.checked = this.progress.settings.tapToPlace;
+    if (this.elements.settingUsePlatformName) {
+      this.elements.settingUsePlatformName.checked = this.progress.settings.usePlatformPlayerName;
+    }
+    this.updatePlayerNameField();
     this.elements.settingLanguage.value = this.progress.settings.language;
     this.updateMenuStats();
+  }
+
+  private async saveLeaderboard(): Promise<void> {
+    await this.leaderboardService.save(this.leaderboard);
   }
 
   private async saveProgress(): Promise<void> {
@@ -324,6 +428,7 @@ export class App {
     await this.storage.set("themesUnlocked", this.progress.themesUnlocked);
     await this.storage.set("runsCount", this.progress.runsCount);
     await this.storage.set("tutorialCompleted", this.progress.tutorialCompleted);
+    await this.storage.set("loginReward", this.progress.loginReward);
     await this.storage.set("settings", this.progress.settings);
   }
 
@@ -352,6 +457,66 @@ export class App {
     }
   }
 
+  private async refreshPlatformPlayer(options?: { syncName?: boolean }): Promise<void> {
+    this.platformPlayer = await this.platform.getPlayerProfile();
+    if (options?.syncName) {
+      this.updatePlayerNameField();
+    }
+    this.renderPlatformAccount();
+  }
+
+  private renderPlatformAccount(): void {
+    const card = this.elements.settingsAccount;
+    const status = this.elements.settingsAccountStatus;
+    const hint = this.elements.settingsAccountHint;
+    const button = this.elements.settingsAccountAuth;
+    const usePlatformName = this.elements.settingUsePlatformName;
+    if (!card || !status || !hint || !button || !usePlatformName) {
+      return;
+    }
+    const lang = this.progress.settings.language;
+    const visible = this.platform.id === "yandex" && this.platformPlayer.supported;
+    card.hidden = !visible;
+    if (!visible) {
+      return;
+    }
+    if (this.platformPlayer.authorized) {
+      status.textContent = t(lang, "settings.account.connected", {
+        name:
+          this.platformPlayer.displayName ??
+          t(lang, "settings.account.connected_fallback")
+      });
+      hint.textContent = t(lang, "settings.account.connected_hint");
+      usePlatformName.checked = this.progress.settings.usePlatformPlayerName;
+      usePlatformName.disabled = !this.hasPlatformDisplayName();
+      button.hidden = true;
+      return;
+    }
+    status.textContent = t(lang, "settings.account.guest");
+    hint.textContent = t(lang, "settings.account.guest_hint");
+    usePlatformName.checked = this.progress.settings.usePlatformPlayerName;
+    usePlatformName.disabled = false;
+    button.hidden = false;
+    button.textContent = t(lang, "settings.account.sign_in");
+  }
+
+  private async requestOptionalPlatformAuth(): Promise<void> {
+    const previousAuthorized = this.platformPlayer.authorized;
+    await this.platform.requestPlayerAuth();
+    await this.refreshPlatformPlayer({ syncName: true });
+    await this.refreshLeaderboard();
+    this.updateResults();
+    this.updateResultsHints();
+    const lang = this.progress.settings.language;
+    if (this.platformPlayer.authorized && !previousAuthorized) {
+      this.toast.show(t(lang, "toast.account_connected"));
+      return;
+    }
+    if (!this.platformPlayer.authorized) {
+      this.toast.show(t(lang, "toast.account_optional"));
+    }
+  }
+
   private handleVisibilityChange(forceHidden?: boolean): void {
     const hidden = forceHidden ?? document.hidden;
     if (hidden) {
@@ -377,6 +542,8 @@ export class App {
         this.audio.startMusic();
       }
       this.platform.gameplayStart();
+    } else if (this.activeScreen === "menu") {
+      void this.syncMenuDailyState();
     }
   }
 
@@ -469,9 +636,14 @@ export class App {
     document.documentElement.lang = lang;
     document.title = t(lang, "title.full");
     this.elements.settingLanguage.value = lang;
+    this.elements.settingPlayerName.placeholder = t(lang, "settings.player_name_placeholder");
+    this.updatePlayerNameField();
+    this.renderPlatformAccount();
+    this.renderLeaderboard();
     this.renderThemes();
     this.updateTutorialCta();
     this.updateMenuDailyStatus();
+    this.updateMenuLoginRewardStatus();
     this.updateMenuRewardState();
     this.updateGameHint();
     this.updateResults();
@@ -592,6 +764,14 @@ export class App {
         this.setGameHint(t(lang, "game.pressure.single_piece"));
         return;
       }
+      this.setGameHint(
+        t(lang, "game.level_progress", {
+          level: this.session.state.level,
+          progress: this.session.state.levelProgress,
+          goal: this.session.state.levelGoal
+        })
+      );
+      return;
     }
     this.setGameHint(null);
   }
@@ -631,6 +811,9 @@ export class App {
     this.runDurationMs = 0;
     this.runBonusTokens = 0;
     this.runDailyImproved = false;
+    this.runLeaderboardRank = null;
+    this.runDailyLeaderboardRank = null;
+    this.pendingLeaderboardEntry = null;
     this.runDailyKey = mode === "daily" ? dailyBestKey(date) : null;
     this.runStartDailyBest = this.runDailyKey
       ? await this.storage.getOptional<number>(this.runDailyKey)
@@ -720,9 +903,15 @@ export class App {
     this.showScreen("themes");
   }
 
-  private openSettings(returnTo: ScreenId): void {
+  private async openLeaderboard(): Promise<void> {
+    this.showScreen("leaderboard");
+    await this.refreshLeaderboard();
+  }
+
+  private async openSettings(returnTo: ScreenId): Promise<void> {
     this.returnScreen = returnTo;
     this.showScreen("settings");
+    await this.refreshPlatformPlayer();
   }
 
   private closeSettings(): void {
@@ -733,9 +922,11 @@ export class App {
     this.activeScreen = id;
     this.screens.show(id);
     if (id === "menu") {
-      void this.refreshCurrentDailyBest();
+      void this.syncMenuDailyState();
       this.updateMenuRewardState();
       this.updateTutorialCta();
+    } else if (id === "leaderboard") {
+      this.renderLeaderboard();
     } else if (id === "game") {
       this.elements.canvas.focus();
     }
@@ -748,6 +939,174 @@ export class App {
     this.elements.menuTokens.textContent = `${this.progress.tokens}`;
     this.updateTutorialCta();
     this.updateMenuDailyStatus();
+    this.updateMenuLoginRewardStatus();
+  }
+
+  private renderLeaderboard(): void {
+    this.renderLeaderboardMeta();
+    this.renderLeaderboardList(this.elements.leaderboardAllTime, this.leaderboard.allTime, "overall");
+    this.renderLeaderboardList(this.elements.leaderboardDaily, this.leaderboard.daily, "daily");
+  }
+
+  private async refreshLeaderboard(): Promise<void> {
+    const leaderboardLoad = await this.leaderboardService.load(formatDateKey(new Date()));
+    this.leaderboard = leaderboardLoad.state;
+    this.leaderboardMeta = leaderboardLoad.meta;
+    this.renderLeaderboard();
+  }
+
+  private renderLeaderboardMeta(): void {
+    const lang = this.progress.settings.language;
+    const overallMeta = this.leaderboardMeta.overall;
+    const dailyMeta = this.leaderboardMeta.daily;
+    const allLocal = overallMeta.source === "local" && dailyMeta.source === "local";
+    const allPlatform = overallMeta.source === "platform" && dailyMeta.source === "platform";
+    const hasLocalBoard = overallMeta.source === "local" || dailyMeta.source === "local";
+    const needsPlatformAuth =
+      overallMeta.submissionState === "auth_required" || dailyMeta.submissionState === "auth_required";
+    const sourceKey = allPlatform
+      ? this.getPlatformLeaderboardSourceKey(overallMeta.provider ?? dailyMeta.provider)
+      : allLocal
+        ? overallMeta.scope === "account" || dailyMeta.scope === "account"
+          ? "leaderboard.source.account"
+          : "leaderboard.source.device"
+        : "leaderboard.source.mixed";
+    const hintKey = allPlatform
+      ? needsPlatformAuth
+        ? "leaderboard.hint.platform_auth"
+        : "leaderboard.hint.platform"
+      : allLocal
+        ? overallMeta.scope === "account" || dailyMeta.scope === "account"
+          ? "leaderboard.hint.account"
+          : "leaderboard.hint.device"
+        : needsPlatformAuth
+          ? "leaderboard.hint.mixed_auth"
+          : "leaderboard.hint.mixed";
+    this.elements.leaderboardSourceBadge.textContent = t(lang, sourceKey);
+    this.elements.leaderboardHint.textContent = t(lang, hintKey);
+    this.elements.leaderboardClear.hidden = !hasLocalBoard;
+    if (hasLocalBoard) {
+      this.elements.leaderboardClear.textContent = t(
+        lang,
+        allLocal ? "leaderboard.clear" : "leaderboard.clear_local"
+      );
+    }
+  }
+
+  private getPlatformLeaderboardSourceKey(provider: LeaderboardMeta["overall"]["provider"]): string {
+    if (provider === "yandex") {
+      return "leaderboard.source.platform.yandex";
+    }
+    return "leaderboard.source.platform";
+  }
+
+  private renderLeaderboardList(
+    container: HTMLElement,
+    entries: LeaderboardEntry[],
+    board: "overall" | "daily"
+  ): void {
+    if (!container) {
+      return;
+    }
+    const lang = this.progress.settings.language;
+    container.innerHTML = "";
+
+    if (entries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "leaderboard-empty";
+      empty.textContent = t(
+        lang,
+        board === "overall" ? "leaderboard.empty.overall" : "leaderboard.empty.daily"
+      );
+      container.appendChild(empty);
+      return;
+    }
+
+    const list = document.createElement("ol");
+    list.className = "leaderboard-list";
+
+    entries.forEach((entry, index) => {
+      const item = document.createElement("li");
+      item.className = "leaderboard-item";
+      item.classList.toggle("leaderboard-item--latest", entry.id === this.lastRecordedLeaderboardEntryId);
+
+      const rank = document.createElement("span");
+      rank.className = "leaderboard-rank";
+      rank.textContent = `#${index + 1}`;
+
+      const body = document.createElement("div");
+      body.className = "leaderboard-body";
+
+      const head = document.createElement("div");
+      head.className = "leaderboard-head";
+
+      const identity = document.createElement("div");
+      identity.className = "leaderboard-identity";
+
+      const score = document.createElement("strong");
+      score.className = "leaderboard-score";
+      score.textContent = `${entry.score}`;
+
+      const player = document.createElement("span");
+      player.className = "leaderboard-player";
+      player.textContent = this.getDisplayPlayerName(entry.playerName);
+
+      identity.appendChild(score);
+      identity.appendChild(player);
+
+      const mode = document.createElement("span");
+      mode.className = `leaderboard-tag leaderboard-tag--${entry.mode}`;
+      mode.textContent = t(lang, `leaderboard.mode.${entry.mode}`);
+
+      head.appendChild(identity);
+      head.appendChild(mode);
+
+      const meta = document.createElement("span");
+      meta.className = "leaderboard-meta";
+      meta.textContent = t(lang, "leaderboard.entry_meta", {
+        level: entry.level,
+        lines: entry.lines,
+        date: this.formatLeaderboardDate(entry.dateKey)
+      });
+
+      body.appendChild(head);
+      body.appendChild(meta);
+      item.appendChild(rank);
+      item.appendChild(body);
+      list.appendChild(item);
+    });
+
+    container.appendChild(list);
+  }
+
+  private getDisplayPlayerName(playerName: string): string {
+    return playerName.trim().length > 0
+      ? playerName
+      : t(this.progress.settings.language, "leaderboard.player_fallback");
+  }
+
+  private formatLeaderboardDate(dateKey: string): string {
+    if (dateKey.length !== 8) {
+      return dateKey;
+    }
+    return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
+  }
+
+  private async clearLeaderboard(): Promise<void> {
+    const lang = this.progress.settings.language;
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(t(lang, "leaderboard.clear_confirm"));
+    if (!confirmed) {
+      return;
+    }
+    const cleared = await this.leaderboardService.clear(formatDateKey(new Date()));
+    this.leaderboard = cleared.state;
+    this.leaderboardMeta = cleared.meta;
+    this.lastRecordedLeaderboardEntryId = null;
+    this.renderLeaderboard();
+    this.toast.show(t(lang, "leaderboard.clear_done"));
   }
 
   private updateMenuDailyStatus(): void {
@@ -756,6 +1115,22 @@ export class App {
       this.currentDailyBest === null
         ? t(lang, "menu.daily_status.empty")
         : t(lang, "menu.daily_status.best", { score: this.currentDailyBest });
+  }
+
+  private updateMenuLoginRewardStatus(): void {
+    const lang = this.progress.settings.language;
+    const reward = getLoginRewardStatus(this.progress.loginReward, new Date());
+    this.elements.menuLoginRewardStatus.textContent = reward.claimedToday
+      ? t(lang, "menu.login_reward.claimed", {
+          day: reward.day,
+          count: reward.tokens,
+          nextDay: reward.nextDay,
+          nextCount: reward.nextTokens
+        })
+      : t(lang, "menu.login_reward.ready", {
+          day: reward.day,
+          count: reward.tokens
+        });
   }
 
   private async refreshCurrentDailyBest(): Promise<void> {
@@ -772,6 +1147,42 @@ export class App {
     if (this.activeScreen === "menu") {
       this.updateMenuDailyStatus();
     }
+  }
+
+  private async syncMenuDailyState(): Promise<void> {
+    await this.refreshCurrentDailyBest();
+    await this.syncLoginReward();
+  }
+
+  private async syncLoginReward(): Promise<void> {
+    if (!this.storage) {
+      return;
+    }
+
+    const now = new Date();
+    const reward = claimLoginReward(this.progress.loginReward, now);
+    if (!reward.granted) {
+      this.updateMenuLoginRewardStatus();
+      return;
+    }
+
+    this.progress.loginReward = reward.state;
+    this.progress.tokens += reward.tokens;
+    await this.saveProgress();
+    this.updateMenuStats();
+
+    const lang = this.progress.settings.language;
+    this.toast.show(t(lang, "toast.login_reward", { day: reward.day, count: reward.tokens }));
+    logger.info("loginRewardClaimed", {
+      day: reward.day,
+      rewardTokens: reward.tokens,
+      date: formatDateKey(now)
+    });
+    this.platform.track("loginRewardClaimed", {
+      day: reward.day,
+      rewardTokens: reward.tokens,
+      date: formatDateKey(now)
+    });
   }
 
   private updateTutorialCta(): void {
@@ -793,6 +1204,8 @@ export class App {
     const stats = this.session.getPlacementStats();
     this.elements.hudScore.textContent = `${this.session.state.score}`;
     this.elements.hudCombo.textContent = `x${this.session.state.combo.toFixed(2)}`;
+    this.elements.hudLevel.textContent = `${this.session.state.level}`;
+    this.elements.hudLevelGoal.textContent = `${this.session.state.levelProgress} / ${this.session.state.levelGoal}`;
     this.elements.hudOptions.textContent = `${stats.totalPlacements}`;
     this.elements.hudTokens.textContent = `${this.progress.tokens}`;
     this.elements.hudOptionsPill?.classList.toggle("pill--warning", stats.totalPlacements > 4 && stats.totalPlacements <= 12);
@@ -806,6 +1219,7 @@ export class App {
     this.elements.resultsTokens.textContent = `${this.runTokens}`;
     this.elements.resultsLines.textContent = `${this.session?.state.linesCleared ?? 0}`;
     this.elements.resultsMoves.textContent = `${this.session?.state.moves ?? 0}`;
+    this.elements.resultsLevel.textContent = `${this.session?.state.level ?? 1}`;
     this.elements.resultsDuration.textContent =
       this.runDurationMs > 0 ? this.formatDuration(this.runDurationMs) : "0:00";
     this.elements.resultsPeakCombo.textContent = `x${(this.session?.state.peakCombo ?? 1).toFixed(2)}`;
@@ -839,6 +1253,15 @@ export class App {
         items.push(t(lang, "results.summary.daily_current", { score: this.pendingDailyBest }));
       }
     }
+    items.push(t(lang, "results.summary.level", { level: this.session.state.level }));
+    if (this.runLeaderboardRank !== null) {
+      items.push(t(lang, "results.summary.leaderboard", { rank: this.runLeaderboardRank }));
+    }
+    if (this.runDailyLeaderboardRank !== null) {
+      items.push(
+        t(lang, "results.summary.daily_leaderboard", { rank: this.runDailyLeaderboardRank })
+      );
+    }
     if (this.runBonusTokens > 0) {
       items.push(t(lang, "results.summary.token_bonus", { count: this.runBonusTokens }));
     }
@@ -850,8 +1273,64 @@ export class App {
     this.elements.resultsSummary.textContent = items.join(" • ");
   }
 
+  private buildPendingLeaderboardEntry(duration: number): LeaderboardEntry | null {
+    if (!this.session || this.session.state.mode === "tutorial") {
+      return null;
+    }
+
+    const createdAt = Date.now();
+    const dateKey = formatDateKey(new Date(createdAt));
+    return {
+      id: `${this.session.state.mode}_${createdAt}_${this.session.state.seed}`,
+      playerName: this.getEffectivePlayerName(),
+      score: this.session.state.score,
+      mode: this.session.state.mode,
+      level: this.session.state.level,
+      lines: this.session.state.linesCleared,
+      moves: this.session.state.moves,
+      durationMs: duration,
+      seed: this.session.state.seed,
+      createdAt,
+      dateKey
+    };
+  }
+
   private isRewardedAvailable(): boolean {
     return this.platform.id !== "generic";
+  }
+
+  private sanitizePlayerName(
+    value: string,
+    options?: {
+      trimStart?: boolean;
+    }
+  ): string {
+    const normalized = value.replace(/\s+/g, " ");
+    const trimmed = options?.trimStart ? normalized.trimStart() : normalized.trim();
+    return trimmed.slice(0, 18);
+  }
+
+  private hasPlatformDisplayName(): boolean {
+    return this.sanitizePlayerName(this.platformPlayer.displayName ?? "").length > 0;
+  }
+
+  private shouldUsePlatformPlayerName(): boolean {
+    return this.progress.settings.usePlatformPlayerName && this.hasPlatformDisplayName();
+  }
+
+  private getEffectivePlayerName(): string {
+    if (this.shouldUsePlatformPlayerName()) {
+      return this.sanitizePlayerName(this.platformPlayer.displayName ?? "");
+    }
+    return this.progress.settings.playerName;
+  }
+
+  private updatePlayerNameField(): void {
+    const usePlatformName = this.shouldUsePlatformPlayerName();
+    this.elements.settingPlayerName.value = usePlatformName
+      ? this.getEffectivePlayerName()
+      : this.progress.settings.playerName;
+    this.elements.settingPlayerName.disabled = usePlatformName;
   }
 
   private getMenuRewardEligibility(): { ok: boolean; reason?: string } {
@@ -960,6 +1439,9 @@ export class App {
       this.runDurationMs = duration;
       this.runBonusTokens = 0;
       this.runDailyImproved = false;
+      this.runLeaderboardRank = null;
+      this.runDailyLeaderboardRank = null;
+      this.pendingLeaderboardEntry = null;
       this.progress.tutorialCompleted = true;
       this.runTokens = 0;
       this.runNewBest = false;
@@ -999,6 +1481,15 @@ export class App {
     const bonus = (this.runNewBest ? 2 : 0) + (this.runFirstDaily ? 3 : 0);
     this.runBonusTokens = bonus;
     this.runTokens = baseTokens + bonus;
+    this.pendingLeaderboardEntry = this.buildPendingLeaderboardEntry(duration);
+    if (this.pendingLeaderboardEntry) {
+      const preview = recordLeaderboardEntry(this.leaderboard, this.pendingLeaderboardEntry);
+      this.runLeaderboardRank = preview.overallRank;
+      this.runDailyLeaderboardRank = preview.dailyRank;
+    } else {
+      this.runLeaderboardRank = null;
+      this.runDailyLeaderboardRank = null;
+    }
     this.updateResults();
 
     logger.info("endRun", {
@@ -1040,12 +1531,27 @@ export class App {
       this.progress.bestScore = Math.max(this.progress.bestScore, this.pendingBestScore);
     }
     if (this.runDailyKey && this.pendingDailyBest !== null) {
-      await this.storage.set(this.runDailyKey, this.pendingDailyBest);
       if (this.runDailyKey === this.currentDailyKey) {
         this.currentDailyBest = this.pendingDailyBest;
       }
     }
+    if (this.pendingLeaderboardEntry) {
+      const recorded = recordLeaderboardEntry(this.leaderboard, this.pendingLeaderboardEntry);
+      this.leaderboard = recorded.state;
+      this.lastRecordedLeaderboardEntryId =
+        recorded.state.allTime.some((entry) => entry.id === this.pendingLeaderboardEntry?.id) ||
+        recorded.state.daily.some((entry) => entry.id === this.pendingLeaderboardEntry?.id)
+          ? this.pendingLeaderboardEntry.id
+          : null;
+    }
     this.progress.tokens += this.runTokens;
+    if (this.runDailyKey && this.pendingDailyBest !== null) {
+      await this.storage.set(this.runDailyKey, this.pendingDailyBest);
+    }
+    if (this.pendingLeaderboardEntry) {
+      await this.saveLeaderboard();
+      void this.leaderboardService.submit(this.pendingLeaderboardEntry);
+    }
     await this.saveProgress();
     this.updateMenuStats();
   }
@@ -1207,6 +1713,9 @@ export class App {
       this.selectedPieceId = null;
       this.selectedPlacementPreview = null;
       this.selectedInputMode = null;
+      this.runLeaderboardRank = null;
+      this.runDailyLeaderboardRank = null;
+      this.pendingLeaderboardEntry = null;
       this.saveProgress();
       this.updateHud();
       this.renderer.setState({
@@ -1766,17 +2275,48 @@ export class App {
         this.audio.playCombo();
       }
     }
+    if (result.levelUps.length > 0 && result.linesCleared < 2) {
+      this.audio.playCombo();
+    }
+
+    const flashRows = Array.from(new Set([...result.rows, ...result.pulseRows]));
+    const flashCols = Array.from(new Set([...result.cols, ...result.pulseCols]));
     this.renderer.setState({
       board: result.state.board,
       pieces: this.session.pieces,
       ...this.getRendererPieceMeta(),
       guideGhost: undefined,
       flashLines: {
-        rows: result.rows,
-        cols: result.cols,
+        rows: flashRows,
+        cols: flashCols,
         until: performance.now() + 240
       }
     });
+
+    if (result.levelUps.length > 0) {
+      const latestLevelUp = result.levelUps[result.levelUps.length - 1];
+      const lang = this.progress.settings.language;
+      this.toast.show(
+        t(lang, latestLevelUp.clearedCells > 0 ? "toast.level_up" : "toast.level_up_soft", {
+          level: latestLevelUp.level
+        })
+      );
+      for (const levelUp of result.levelUps) {
+        logger.info("levelUp", {
+          mode: result.state.mode,
+          level: levelUp.level,
+          pulseClearedCells: levelUp.clearedCells,
+          score: result.state.score
+        });
+        this.platform.track("levelUp", {
+          mode: result.state.mode,
+          level: levelUp.level,
+          pulseClearedCells: levelUp.clearedCells,
+          score: result.state.score
+        });
+      }
+    }
+
     this.updateHud();
     this.updateGameHint();
 

@@ -3,6 +3,7 @@ import {
   applyPlacement,
   canAnyPieceFit,
   canPlace,
+  clearDensestLane,
   createBoard,
   getPlaceablePieces,
   getValidOrigins,
@@ -108,5 +109,24 @@ describe("board placement", () => {
   it("detects whether a placement covers a tapped cell", () => {
     expect(placementOccupiesCell(line3h, { x: 2, y: 4 }, { x: 3, y: 4 })).toBe(true);
     expect(placementOccupiesCell(line3h, { x: 2, y: 4 }, { x: 3, y: 5 })).toBe(false);
+  });
+
+  it("clears the densest lane for a level pulse", () => {
+    const board = createBoard();
+    board[5][1] = 1;
+    board[5][2] = 1;
+    board[5][3] = 1;
+    board[5][4] = 1;
+    board[2][8] = 1;
+    board[3][8] = 1;
+    board[4][8] = 1;
+
+    const pulse = clearDensestLane(board);
+
+    expect(pulse.rows).toEqual([5]);
+    expect(pulse.cols).toEqual([]);
+    expect(pulse.clearedCells).toBe(4);
+    expect(pulse.board[5].every((cell) => cell === 0)).toBe(true);
+    expect(pulse.board[2][8]).toBe(1);
   });
 });

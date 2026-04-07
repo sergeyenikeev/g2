@@ -54,6 +54,7 @@
             <button id="btn-play" class="btn primary" data-i18n="menu.play">Play</button>
             <button id="btn-tutorial" class="btn" data-i18n="menu.tutorial">Tutorial</button>
             <button id="btn-daily" class="btn" data-i18n="menu.daily">Daily Challenge</button>
+            <button id="btn-leaderboard" class="btn" data-i18n="menu.leaderboard">Leaderboard</button>
             <button
               id="btn-menu-reward"
               class="btn"
@@ -67,6 +68,7 @@
           </div>
           <p id="menu-reward-hint" class="hint" hidden role="status" aria-live="polite"></p>
           <p id="menu-daily-status" class="hint" role="status" aria-live="polite"></p>
+          <p id="menu-login-reward-status" class="hint" role="status" aria-live="polite"></p>
           <div class="menu-meta">
             <div class="pill">
               <span data-i18n="menu.best">Best</span>
@@ -100,6 +102,14 @@
             <div class="pill">
               <span data-i18n="hud.combo">Combo</span>
               <strong id="hud-combo">x1.00</strong>
+            </div>
+            <div class="pill">
+              <span data-i18n="hud.level">Level</span>
+              <strong id="hud-level">1</strong>
+            </div>
+            <div class="pill">
+              <span data-i18n="hud.level_goal">Pulse</span>
+              <strong id="hud-level-goal">0 / 0</strong>
             </div>
             <div class="pill" id="hud-options-pill">
               <span data-i18n="hud.options">Options</span>
@@ -159,6 +169,10 @@
               <strong id="results-moves">0</strong>
             </div>
             <div class="stat">
+              <span data-i18n="results.level">Level</span>
+              <strong id="results-level">1</strong>
+            </div>
+            <div class="stat">
               <span data-i18n="results.duration">Time</span>
               <strong id="results-duration">0:00</strong>
             </div>
@@ -191,6 +205,36 @@
         </div>
       </section>
 
+      <section id="screen-leaderboard" class="screen" tabindex="-1">
+        <div class="card wide">
+          <div class="leaderboard-title-row">
+            <h2 class="title" data-i18n="leaderboard.title">Leaderboard</h2>
+            <span id="leaderboard-source-badge" class="leaderboard-source-badge">Device</span>
+          </div>
+          <p id="leaderboard-hint" class="hint" data-i18n="leaderboard.hint">
+            Top runs on this device. On supported platforms, storage sync keeps them with your account.
+          </p>
+          <div class="leaderboard-grid">
+            <section class="leaderboard-panel" aria-labelledby="leaderboard-all-time-title">
+              <div class="leaderboard-panel__head">
+                <h3 id="leaderboard-all-time-title" data-i18n="leaderboard.all_time">All-Time Top 10</h3>
+              </div>
+              <div id="leaderboard-all-time"></div>
+            </section>
+            <section class="leaderboard-panel" aria-labelledby="leaderboard-daily-title">
+              <div class="leaderboard-panel__head">
+                <h3 id="leaderboard-daily-title" data-i18n="leaderboard.daily">Daily Legends</h3>
+              </div>
+              <div id="leaderboard-daily"></div>
+            </section>
+          </div>
+          <div class="menu-grid">
+            <button id="btn-leaderboard-clear" class="btn" data-i18n="leaderboard.clear">Clear Leaderboard</button>
+            <button id="btn-leaderboard-back" class="btn ghost" data-i18n="leaderboard.back">Back</button>
+          </div>
+        </div>
+      </section>
+
       <section id="screen-themes" class="screen" tabindex="-1">
         <div class="card wide">
           <h2 class="title" data-i18n="themes.title">Themes</h2>
@@ -217,6 +261,36 @@
               <input id="setting-tap" type="checkbox" />
               <span data-i18n="settings.tap">Tap to place</span>
             </label>
+            <label class="toggle toggle--stack">
+              <span data-i18n="settings.player_name">Player Name</span>
+              <input
+                id="setting-player-name"
+                class="setting-input"
+                type="text"
+                maxlength="18"
+                autocomplete="nickname"
+                spellcheck="false"
+              />
+            </label>
+            <div id="settings-account" class="platform-account" hidden>
+              <div class="platform-account__head">
+                <span data-i18n="settings.account">Yandex Account</span>
+                <strong id="settings-account-status" class="platform-account__status"></strong>
+              </div>
+              <p id="settings-account-hint" class="hint"></p>
+              <label class="toggle">
+                <input id="setting-use-platform-name" type="checkbox" />
+                <span data-i18n="settings.account.use_name">Use Yandex display name</span>
+              </label>
+              <button
+                id="btn-settings-account-auth"
+                class="btn"
+                type="button"
+                data-i18n="settings.account.sign_in"
+              >
+                Sign in to Yandex
+              </button>
+            </div>
             <label class="toggle">
               <span data-i18n="settings.language">Language</span>
               <select id="setting-language" class="setting-select">

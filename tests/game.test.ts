@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GameSession } from "../src/app/GameSession";
 import { createBoard } from "../src/core/board";
-import { applyMove, createEmptyState, tokensFromScore } from "../src/core/game";
+import { applyMove, computeLevelUpScore, createEmptyState, tokensFromScore } from "../src/core/game";
 import { PIECES } from "../src/core/pieces";
 import { createSeededRng } from "../src/core/rng";
 
@@ -42,6 +42,29 @@ describe("game state", () => {
     expect(result?.state.combo).toBe(1.25);
     expect(result?.state.peakCombo).toBe(1.25);
     expect(result?.state.bestClear).toBe(1);
+  });
+
+  it("levels up endlessly and clears the tightest lane as a pulse reward", () => {
+    const board = createBoard();
+    board[5][1] = 1;
+    board[5][2] = 1;
+    board[5][3] = 1;
+    board[5][4] = 1;
+
+    const state = {
+      ...createEmptyState("play", "seed", board, 0),
+      levelGoal: 1
+    };
+    const result = applyMove(state, dot, { x: 0, y: 0 });
+
+    expect(result).not.toBeNull();
+    expect(result?.state.level).toBe(2);
+    expect(result?.state.levelProgress).toBe(0);
+    expect(result?.levelUps).toHaveLength(1);
+    expect(result?.pulseRows).toEqual([5]);
+    expect(result?.pulseCols).toEqual([]);
+    expect(result?.state.score).toBe(5 + computeLevelUpScore(2));
+    expect(result?.state.board[5].every((cell) => cell === 0)).toBe(true);
   });
 
   it("does not offer continue when the board has no rescue placements", () => {

@@ -34,6 +34,11 @@ const getEnvValue = (key: string): string | undefined => {
   return undefined;
 };
 
+const normalizeOptionalEnv = (key: string): string | null => {
+  const value = getEnvValue(key)?.trim();
+  return value && value.length > 0 ? value : null;
+};
+
 export const resolvePlatformId = (): PlatformId => {
   const raw = (getEnvValue("VITE_PLATFORM") ?? "generic").toLowerCase();
   switch (raw) {
@@ -59,3 +64,8 @@ export const resolveUseMock = (): boolean => {
   const processEnv = getProcessEnv();
   return processEnv ? processEnv.NODE_ENV !== "production" : false;
 };
+
+export const resolveYandexLeaderboardNames = (): { overall: string | null; daily: string | null } => ({
+  overall: normalizeOptionalEnv("VITE_YANDEX_LEADERBOARD_ALL_TIME"),
+  daily: normalizeOptionalEnv("VITE_YANDEX_LEADERBOARD_DAILY")
+});

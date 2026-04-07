@@ -32,7 +32,7 @@ export class GameSession {
   constructor(mode: GameMode, seed: string, rng: Rng, startedAt: number) {
     this.generator = new PieceGenerator(rng);
     this.state = createEmptyState(mode, seed, createBoard(), startedAt);
-    this.pieces = this.generator.nextSet(this.state.board, 0);
+    this.pieces = this.generator.nextSet(this.state.board, 0, this.state.level);
   }
 
   placePiece(pieceId: string, origin: Point): MoveResult | null {
@@ -51,7 +51,7 @@ export class GameSession {
     this.state = result.state;
     this.pieces[slotIndex] = null;
     if (this.state.mode !== "tutorial" && this.pieces.every((slot) => slot === null)) {
-      this.pieces = this.generator.nextSet(this.state.board, this.state.moves);
+      this.pieces = this.generator.nextSet(this.state.board, this.state.moves, this.state.level);
     }
     return result;
   }

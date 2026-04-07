@@ -10,8 +10,14 @@ describe("progress normalization", () => {
 
     expect(progress.settings.tapToPlace).toBe(true);
     expect(progress.settings.themeId).toBe("lume");
+    expect(progress.settings.playerName).toBe("");
+    expect(progress.settings.usePlatformPlayerName).toBe(false);
     expect(progress.themesUnlocked).toEqual(["lume"]);
     expect(progress.tutorialCompleted).toBe(false);
+    expect(progress.loginReward).toEqual({
+      cycleDay: 0,
+      lastClaimDate: null
+    });
   });
 
   it("sanitizes corrupted numeric values", () => {
@@ -30,6 +36,10 @@ describe("progress normalization", () => {
     expect(progress.tokens).toBe(0);
     expect(progress.runsCount).toBe(0);
     expect(progress.tutorialCompleted).toBe(false);
+    expect(progress.loginReward).toEqual({
+      cycleDay: 0,
+      lastClaimDate: null
+    });
   });
 
   it("drops invalid themes and falls back to an unlocked theme", () => {
@@ -69,6 +79,23 @@ describe("progress normalization", () => {
     expect(progress.settings.tapToPlace).toBe(true);
   });
 
+  it("sanitizes stored player names", () => {
+    const progress = normalizeStoredProgress(
+      {
+        bestScore: 0,
+        tokens: 0,
+        themesUnlocked: ["lume"],
+        runsCount: 0,
+        settings: {
+          playerName: "   Nova    Runner Beyond Limit   "
+        }
+      },
+      { platformId: "generic", isTouch: false }
+    );
+
+    expect(progress.settings.playerName).toBe("Nova Runner Beyond");
+  });
+
   it("uses platform language for yandex even when storage contains another value", () => {
     const progress = normalizeStoredProgress(
       {
@@ -88,6 +115,23 @@ describe("progress normalization", () => {
     );
 
     expect(progress.settings.language).toBe("ru");
+  });
+
+  it("keeps explicit preference for platform player name", () => {
+    const progress = normalizeStoredProgress(
+      {
+        bestScore: 0,
+        tokens: 0,
+        themesUnlocked: ["lume"],
+        runsCount: 0,
+        settings: {
+          usePlatformPlayerName: true
+        }
+      },
+      { platformId: "yandex", isTouch: false }
+    );
+
+    expect(progress.settings.usePlatformPlayerName).toBe(true);
   });
 
   it("keeps tutorial completion only when stored as a valid boolean", () => {
@@ -116,5 +160,27 @@ describe("progress normalization", () => {
 
     expect(completed.tutorialCompleted).toBe(true);
     expect(corrupted.tutorialCompleted).toBe(false);
+  });
+
+  it("sanitizes malformed login reward state", () => {
+    const progress = normalizeStoredProgress(
+      {
+        bestScore: 0,
+        tokens: 0,
+        themesUnlocked: ["lume"],
+        runsCount: 0,
+        loginReward: {
+          cycleDay: 99,
+          lastClaimDate: "today"
+        },
+        settings: {}
+      },
+      { platformId: "generic", isTouch: false }
+    );
+
+    expect(progress.loginReward).toEqual({
+      cycleDay: 5,
+      lastClaimDate: null
+    });
   });
 });

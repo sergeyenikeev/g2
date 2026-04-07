@@ -1,10 +1,19 @@
-import { AdContext, AdResult, AdType, PlatformAdapter, PlatformId } from "../bridge";
+import {
+  AdContext,
+  AdResult,
+  AdType,
+  PlatformAdapter,
+  PlatformId,
+  PlatformPlayerProfile
+} from "../bridge";
 import { logger } from "../../utils/logger";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const createMockAdapter = (id: PlatformId): PlatformAdapter => ({
+  ...(id === "yandex" ? createYandexMockAuth() : {}),
   id,
+  storageScope: id === "yandex" ? "account" : "device",
   init: async () => {
     logger.debug("sdk.mock.init", { platform: id });
   },
@@ -30,3 +39,26 @@ export const createMockAdapter = (id: PlatformId): PlatformAdapter => ({
     logger.debug("sdk.mock.happytime", { platform: id });
   }
 });
+
+const createYandexMockAuth = (): Pick<
+  PlatformAdapter,
+  "getPlayerProfile" | "requestPlayerAuth"
+> => {
+  let authorized = false;
+  const profile = (): PlatformPlayerProfile => ({
+    supported: true,
+    provider: "yandex",
+    authorized,
+    displayName: authorized ? "Mock Yandex" : null,
+    avatarUrl: null,
+    playerId: authorized ? "mock-yandex-player" : null
+  });
+
+  return {
+    getPlayerProfile: async () => profile(),
+    requestPlayerAuth: async () => {
+      authorized = true;
+      return profile();
+    }
+  };
+};

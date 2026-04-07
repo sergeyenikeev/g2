@@ -139,6 +139,19 @@ describe("sdk missing behavior", () => {
 });
 
 describe("storage fallback", () => {
+  it("reports device scope by default", () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+    expect(bridge.getStorageScope()).toBe("device");
+  });
+
+  it("reports account scope when adapter storage is account-backed", () => {
+    const bridge = createPlatformBridge({
+      ...createTestAdapter(),
+      storageScope: "account"
+    });
+    expect(bridge.getStorageScope()).toBe("account");
+  });
+
   it("uses localStorage when adapter storage is missing", async () => {
     const store = new Map<string, string>();
     (globalThis as { localStorage?: unknown }).localStorage = {
@@ -167,6 +180,21 @@ describe("storage fallback", () => {
     const bridge = createPlatformBridge(adapter);
     await bridge.storageSet("k", "v");
     expect(adapterStore.get("k")).toBe("v");
+  });
+});
+
+describe("player profile fallback", () => {
+  it("returns unsupported profile when adapter auth is missing", async () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+
+    await expect(bridge.getPlayerProfile()).resolves.toEqual({
+      supported: false,
+      provider: null,
+      authorized: false,
+      displayName: null,
+      avatarUrl: null,
+      playerId: null
+    });
   });
 });
 

@@ -1,4 +1,17 @@
-import { AdContext, AdResult, AdType, PlatformAdapter } from "../bridge";
+import {
+  AdContext,
+  AdResult,
+  AdType,
+  LeaderboardBoard,
+  PlatformAdapter,
+  PlatformLeaderboardEntry,
+  PlatformLeaderboardInfo,
+  PlatformLeaderboardSnapshot,
+  PlatformPlayerProfile,
+  PlatformLeaderboardSubmitPayload,
+  PlatformLeaderboardSubmitResult
+} from "../bridge";
+import { resolveYandexLeaderboardNames } from "../env";
 import { logger } from "../../utils/logger";
 
 interface YandexStorage {
@@ -29,6 +42,55 @@ interface YandexFeatures {
   GameplayAPI?: { start?: () => void; stop?: () => void };
 }
 
+interface YandexLeaderboardPlayer {
+  publicName?: string;
+  uniqueID?: string;
+}
+
+interface YandexLeaderboardTitle {
+  en?: string;
+  ru?: string;
+}
+
+interface YandexLeaderboardInfoBlock {
+  title?: string | YandexLeaderboardTitle;
+}
+
+interface YandexLeaderboardRecord {
+  rank?: number;
+  score?: number;
+  extraData?: string;
+  player?: YandexLeaderboardPlayer;
+}
+
+interface YandexLeaderboardEntriesResponse {
+  entries?: YandexLeaderboardRecord[];
+  leaderboard?: YandexLeaderboardInfoBlock;
+}
+
+interface YandexLeaderboards {
+  getEntries?: (
+    leaderboardName: string,
+    options?: {
+      quantityTop?: number;
+      includeUser?: boolean;
+      quantityAround?: number;
+    }
+  ) => Promise<YandexLeaderboardEntriesResponse>;
+  setScore?: (leaderboardName: string, score: number, extraData?: string) => Promise<void>;
+}
+
+interface YandexPlayer {
+  getName?: () => string;
+  getPhoto?: (size?: "small" | "medium" | "large") => string;
+  getUniqueID?: () => string;
+  isAuthorized?: () => boolean;
+}
+
+interface YandexAuth {
+  openAuthDialog?: () => Promise<void>;
+}
+
 interface YandexI18n {
   lang?: string;
 }
@@ -45,6 +107,10 @@ interface YandexSDK {
   getStorage?: () => Promise<YandexStorage>;
   storage?: YandexStorage;
   environment?: YandexEnvironment;
+  leaderboards?: YandexLeaderboards;
+  auth?: YandexAuth;
+  isAvailableMethod?: (methodName: string) => Promise<boolean>;
+  getPlayer?: () => Promise<YandexPlayer>;
 }
 
 declare global {
@@ -87,8 +153,104 @@ const waitForSdk = async (timeoutMs = 4000, intervalMs = 100): Promise<YandexSDK
 export const createYandexAdapter = (): PlatformAdapter => {
   let sdk: YandexSDK | null = null;
   let storage: YandexStorage | null = null;
+  let player: YandexPlayer | null = null;
+  const leaderboardNames = resolveYandexLeaderboardNames();
 
   const resolveSdk = (): YandexSDK | null => sdk;
+
+  const resolvePlayer = async (force = false): Promise<YandexPlayer | null> => {
+    if (player && !force) {
+      return player;
+    }
+    const resolved = resolveSdk();
+    if (!resolved?.getPlayer) {
+      return null;
+    }
+    try {
+      player = await resolved.getPlayer();
+      return player;
+    } catch {
+      return null;
+    }
+  };
+
+  const toPlayerProfile = async (): Promise<PlatformPlayerProfile> => {
+    const resolved = resolveSdk();
+    if (!resolved?.getPlayer) {
+      return {
+        supported: false,
+        provider: "yandex",
+        authorized: false,
+        displayName: null,
+        avatarUrl: null,
+        playerId: null
+      };
+    }
+    const resolvedPlayer = await resolvePlayer();
+    const authorized = Boolean(resolvedPlayer?.isAuthorized?.());
+    const displayName = resolvedPlayer?.getName?.().trim() || null;
+    return {
+      supported: true,
+      provider: "yandex",
+      authorized,
+      displayName,
+      avatarUrl: resolvedPlayer?.getPhoto?.("small") ?? null,
+      playerId: resolvedPlayer?.getUniqueID?.() ?? null
+    };
+  };
+
+  const getBoardName = (board: LeaderboardBoard): string | null =>
+    board === "overall" ? leaderboardNames.overall : leaderboardNames.daily;
+
+  const isMethodAvailable = async (methodName: string): Promise<boolean> => {
+    const resolved = resolveSdk();
+    if (!resolved) {
+      return false;
+    }
+    if (resolved.isAvailableMethod) {
+      try {
+        return await resolved.isAvailableMethod(methodName);
+      } catch {
+        return false;
+      }
+    }
+    if (methodName === "leaderboards.setScore") {
+      return typeof resolved.leaderboards?.setScore === "function";
+    }
+    if (methodName === "leaderboards.getPlayerEntry") {
+      return true;
+    }
+    return false;
+  };
+
+  const getSubmissionState = async (): Promise<PlatformLeaderboardInfo["submissionState"]> => {
+    const resolved = resolveSdk();
+    if (!resolved?.leaderboards?.setScore) {
+      return "unavailable";
+    }
+    return (await isMethodAvailable("leaderboards.setScore")) ? "enabled" : "auth_required";
+  };
+
+  const pickLeaderboardTitle = (value: string | YandexLeaderboardTitle | undefined): string | undefined => {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+    return value.ru ?? value.en;
+  };
+
+  const normalizeLeaderboardEntry = (
+    entry: YandexLeaderboardRecord,
+    fallbackRank: number
+  ): PlatformLeaderboardEntry => ({
+    rank: typeof entry.rank === "number" && Number.isFinite(entry.rank) ? entry.rank : fallbackRank,
+    score: typeof entry.score === "number" && Number.isFinite(entry.score) ? Math.max(0, Math.floor(entry.score)) : 0,
+    playerName: entry.player?.publicName ?? "",
+    extraData: typeof entry.extraData === "string" ? entry.extraData : null,
+    playerId: entry.player?.uniqueID ?? null
+  });
 
   const resolveStorage = async (): Promise<YandexStorage | null> => {
     if (storage) {
@@ -112,6 +274,7 @@ export const createYandexAdapter = (): PlatformAdapter => {
 
   return {
     id: "yandex",
+    storageScope: "account",
     init: async () => {
       const resolved = await waitForSdk();
       if (!resolved) {
@@ -210,6 +373,78 @@ export const createYandexAdapter = (): PlatformAdapter => {
         throw new Error("storage_unavailable");
       }
       await store.set({ [key]: value });
+    },
+    getLeaderboardInfo: async (board: LeaderboardBoard): Promise<PlatformLeaderboardInfo> => {
+      const leaderboardName = getBoardName(board);
+      const resolved = resolveSdk();
+      if (!leaderboardName || !resolved?.leaderboards?.getEntries) {
+        return {
+          board,
+          enabled: false,
+          provider: null,
+          submissionState: "unavailable"
+        };
+      }
+      return {
+        board,
+        enabled: true,
+        provider: "yandex",
+        submissionState: await getSubmissionState()
+      };
+    },
+    getLeaderboardSnapshot: async (
+      board: LeaderboardBoard
+    ): Promise<PlatformLeaderboardSnapshot | null> => {
+      const leaderboardName = getBoardName(board);
+      const resolved = resolveSdk();
+      if (!leaderboardName || !resolved?.leaderboards?.getEntries) {
+        return null;
+      }
+      const includeUser = await isMethodAvailable("leaderboards.getPlayerEntry");
+      const response = await resolved.leaderboards.getEntries(leaderboardName, {
+        quantityTop: 10,
+        includeUser,
+        quantityAround: includeUser ? 1 : undefined
+      });
+      const entries = Array.isArray(response.entries)
+        ? response.entries.slice(0, 10).map((entry, index) => normalizeLeaderboardEntry(entry, index + 1))
+        : [];
+      return {
+        board,
+        title: pickLeaderboardTitle(response.leaderboard?.title),
+        entries
+      };
+    },
+    submitLeaderboardScore: async (
+      payload: PlatformLeaderboardSubmitPayload
+    ): Promise<PlatformLeaderboardSubmitResult> => {
+      const leaderboardName = getBoardName(payload.board);
+      const resolved = resolveSdk();
+      if (!leaderboardName) {
+        return { submitted: false, reason: "not_configured" };
+      }
+      if (!resolved?.leaderboards?.setScore) {
+        return { submitted: false, reason: "unavailable" };
+      }
+      if (!(await isMethodAvailable("leaderboards.setScore"))) {
+        return { submitted: false, reason: "auth_required" };
+      }
+      await resolved.leaderboards.setScore(
+        leaderboardName,
+        Math.max(0, Math.floor(payload.score)),
+        payload.extraData
+      );
+      return { submitted: true };
+    },
+    getPlayerProfile: async (): Promise<PlatformPlayerProfile> => toPlayerProfile(),
+    requestPlayerAuth: async (): Promise<PlatformPlayerProfile> => {
+      const resolved = resolveSdk();
+      if (!resolved?.auth?.openAuthDialog) {
+        return toPlayerProfile();
+      }
+      await resolved.auth.openAuthDialog();
+      await resolvePlayer(true);
+      return toPlayerProfile();
     },
     track: (eventName: string, payload?: Record<string, unknown>) => {
       logger.info("track", { platform: "yandex", eventName, payload });
