@@ -139,6 +139,19 @@ describe("sdk missing behavior", () => {
 });
 
 describe("storage fallback", () => {
+  it("reports device scope by default", () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+    expect(bridge.getStorageScope()).toBe("device");
+  });
+
+  it("reports account scope when adapter storage is account-backed", () => {
+    const bridge = createPlatformBridge({
+      ...createTestAdapter(),
+      storageScope: "account"
+    });
+    expect(bridge.getStorageScope()).toBe("account");
+  });
+
   it("uses localStorage when adapter storage is missing", async () => {
     const store = new Map<string, string>();
     (globalThis as { localStorage?: unknown }).localStorage = {
@@ -167,6 +180,134 @@ describe("storage fallback", () => {
     const bridge = createPlatformBridge(adapter);
     await bridge.storageSet("k", "v");
     expect(adapterStore.get("k")).toBe("v");
+  });
+});
+
+describe("player profile fallback", () => {
+  it("returns unsupported profile when adapter auth is missing", async () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+
+    await expect(bridge.getPlayerProfile()).resolves.toEqual({
+      supported: false,
+      provider: null,
+      authorized: false,
+      displayName: null,
+      avatarUrl: null,
+      playerId: null
+    });
+  });
+});
+
+describe("platform extras", () => {
+  it("passes sticky banner visibility through the bridge", async () => {
+    const bridge = createPlatformBridge({
+      ...createTestAdapter("yandex"),
+      setStickyBannerVisible: async (visible) => ({
+        supported: true,
+        visible
+      })
+    });
+
+    await expect(bridge.setStickyBannerVisible(true)).resolves.toEqual({
+      supported: true,
+      visible: true
+    });
+  });
+
+  it("returns unsupported review state when adapter does not expose review APIs", async () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+
+    await expect(bridge.canReview()).resolves.toEqual({
+      supported: false,
+      available: false,
+      reason: "unsupported"
+    });
+    await expect(bridge.requestReview()).resolves.toEqual({
+      supported: false,
+      completed: false,
+      reason: "unsupported"
+    });
+  });
+
+  it("reads server time through the bridge", async () => {
+    const bridge = createPlatformBridge({
+      ...createTestAdapter("yandex"),
+      getServerTime: async () => 1_700_000_000_000
+    });
+
+    await expect(bridge.getServerTime()).resolves.toBe(1_700_000_000_000);
+  });
+
+  it("returns unsupported purchase state when adapter has no purchase APIs", async () => {
+    const bridge = createPlatformBridge(createTestAdapter());
+
+    await expect(bridge.getPurchaseCatalog()).resolves.toEqual({
+      supported: false,
+      products: [],
+      reason: "unsupported"
+    });
+    await expect(bridge.getPurchases()).resolves.toEqual([]);
+    await expect(bridge.purchaseProduct("starter_pack")).resolves.toEqual({
+      supported: false,
+      purchased: false,
+      reason: "unsupported"
+    });
+    await expect(bridge.consumePurchase("pt_1")).resolves.toBe(false);
+  });
+
+  it("passes purchases through the bridge when adapter supports them", async () => {
+    const bridge = createPlatformBridge({
+      ...createTestAdapter("yandex"),
+      getPurchaseCatalog: async () => ({
+        supported: true,
+        products: [
+          {
+            id: "starter_pack",
+            title: "Starter Pack"
+          }
+        ]
+      }),
+      getPurchases: async () => [
+        {
+          productId: "starter_pack",
+          purchaseToken: "pt_1"
+        }
+      ],
+      purchaseProduct: async (productId) => ({
+        supported: true,
+        purchased: true,
+        purchase: {
+          productId,
+          purchaseToken: "pt_buy"
+        }
+      }),
+      consumePurchase: async () => true
+    });
+
+    await expect(bridge.getPurchaseCatalog()).resolves.toEqual({
+      supported: true,
+      products: [
+        {
+          id: "starter_pack",
+          title: "Starter Pack"
+        }
+      ]
+    });
+    await expect(bridge.getPurchases()).resolves.toEqual([
+      {
+        productId: "starter_pack",
+        purchaseToken: "pt_1"
+      }
+    ]);
+    await expect(bridge.purchaseProduct("starter_pack")).resolves.toEqual({
+      supported: true,
+      purchased: true,
+      purchase: {
+        productId: "starter_pack",
+        purchaseToken: "pt_buy"
+      }
+    });
+    await expect(bridge.consumePurchase("pt_buy")).resolves.toBe(true);
   });
 });
 

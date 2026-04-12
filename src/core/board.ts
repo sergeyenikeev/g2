@@ -63,6 +63,84 @@ export const clearLines = (board: Board, rows: number[], cols: number[]): Board 
   return next;
 };
 
+export const clearDensestLane = (
+  board: Board
+): { board: Board; rows: number[]; cols: number[]; clearedCells: number } => {
+  const center = (BOARD_SIZE - 1) / 2;
+  let best:
+    | {
+        axis: "row" | "col";
+        index: number;
+        count: number;
+        distance: number;
+      }
+    | null = null;
+
+  for (let y = 0; y < BOARD_SIZE; y += 1) {
+    const count = board[y].reduce<number>((total, cell) => total + cell, 0);
+    if (count === 0) {
+      continue;
+    }
+    const candidate = {
+      axis: "row" as const,
+      index: y,
+      count,
+      distance: Math.abs(y - center)
+    };
+    if (
+      !best ||
+      candidate.count > best.count ||
+      (candidate.count === best.count && candidate.distance < best.distance) ||
+      (candidate.count === best.count &&
+        candidate.distance === best.distance &&
+        best.axis === "col")
+    ) {
+      best = candidate;
+    }
+  }
+
+  for (let x = 0; x < BOARD_SIZE; x += 1) {
+    let count = 0;
+    for (let y = 0; y < BOARD_SIZE; y += 1) {
+      count += board[y][x];
+    }
+    if (count === 0) {
+      continue;
+    }
+    const candidate = {
+      axis: "col" as const,
+      index: x,
+      count,
+      distance: Math.abs(x - center)
+    };
+    if (
+      !best ||
+      candidate.count > best.count ||
+      (candidate.count === best.count && candidate.distance < best.distance)
+    ) {
+      best = candidate;
+    }
+  }
+
+  if (!best) {
+    return {
+      board,
+      rows: [],
+      cols: [],
+      clearedCells: 0
+    };
+  }
+
+  const rows = best.axis === "row" ? [best.index] : [];
+  const cols = best.axis === "col" ? [best.index] : [];
+  return {
+    board: clearLines(board, rows, cols),
+    rows,
+    cols,
+    clearedCells: best.count
+  };
+};
+
 export const applyPlacement = (
   board: Board,
   piece: PieceDef,

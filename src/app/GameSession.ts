@@ -1,4 +1,4 @@
-import { canAnyPieceFit, createBoard, getPlaceablePieces } from "../core/board";
+import { canAnyPieceFit, createBoard, getPlaceablePieces, getValidOrigins } from "../core/board";
 import { applyMove, createEmptyState, GameState, MoveResult } from "../core/game";
 import { PieceGenerator } from "../core/generator";
 import { getPieceById, PIECES } from "../core/pieces";
@@ -16,6 +16,11 @@ const CONTINUE_PREFERRED_IDS = [
   "j_3x2"
 ] as const;
 
+export interface PlacementStats {
+  placeablePieces: number;
+  totalPlacements: number;
+}
+
 export class GameSession {
   private generator: PieceGenerator;
   private idCounter = 0;
@@ -27,7 +32,7 @@ export class GameSession {
   constructor(mode: GameMode, seed: string, rng: Rng, startedAt: number) {
     this.generator = new PieceGenerator(rng);
     this.state = createEmptyState(mode, seed, createBoard(), startedAt);
-    this.pieces = this.generator.nextSet(this.state.board, 0);
+    this.pieces = this.generator.nextSet(this.state.board, 0, this.state.level);
   }
 
   placePiece(pieceId: string, origin: Point): MoveResult | null {
@@ -46,7 +51,7 @@ export class GameSession {
     this.state = result.state;
     this.pieces[slotIndex] = null;
     if (this.state.mode !== "tutorial" && this.pieces.every((slot) => slot === null)) {
-      this.pieces = this.generator.nextSet(this.state.board, this.state.moves);
+      this.pieces = this.generator.nextSet(this.state.board, this.state.moves, this.state.level);
     }
     return result;
   }
@@ -62,6 +67,37 @@ export class GameSession {
 
   canOfferContinue(): boolean {
     return this.buildContinueLoadout().length > 0;
+  }
+
+  getPiecePlacementCounts(): Record<string, number> {
+    const counts: Record<string, number> = {};
+
+    for (const piece of this.pieces) {
+      if (!piece) {
+        continue;
+      }
+      counts[piece.instanceId] = getValidOrigins(this.state.board, piece.def).length;
+    }
+
+    return counts;
+  }
+
+  getPlacementStats(): PlacementStats {
+    const counts = this.getPiecePlacementCounts();
+    let placeablePieces = 0;
+    let totalPlacements = 0;
+
+    for (const placements of Object.values(counts)) {
+      if (placements > 0) {
+        placeablePieces += 1;
+        totalPlacements += placements;
+      }
+    }
+
+    return {
+      placeablePieces,
+      totalPlacements
+    };
   }
 
   setContinuePieces(): boolean {

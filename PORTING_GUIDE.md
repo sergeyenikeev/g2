@@ -49,18 +49,27 @@ Required behavior:
   - `ctx.resume()` on finish/error.
 - `canShowRewardedNow(kind)` -> shared cooldown checks.
 - `markContinueUsed()` -> persist continue cooldown via `rewardCooldownUntil`.
-- `storageGet` / `storageSet` -> SDK storage when available, otherwise localStorage.
+- `storageGet` / `storageSet` -> platform player data when available, otherwise SDK storage/localStorage fallback.
+- `subscribeToPlatformEvents()` -> optional SDK pause/resume/account-selection hooks.
+- `requestFullscreen()` -> optional portal/native fullscreen request on supported mobile builds.
 - `track(eventName, payload)` -> analytics/logging.
 
 ## SDK script loading
 
 `index.html` auto-loads SDK scripts only for the currently supported web targets:
 
-- `yandex` -> `https://yandex.ru/games/sdk/v2`
+- `yandex` -> `/sdk.js` in the uploaded archive
 - `vkplay` -> `https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js`
 
 `generic` does not load any external SDK.
 `rustore` relies on the Android wrapper exposing `window.RustoreBridge`; see `docs/rustore_android.md`.
+For real local Yandex SDK checks (with the mock disabled), Vite proxies `/sdk.js` to `https://sdk.games.s3.yandex.net/sdk.js` in both dev and preview mode.
+
+## Yandex-specific notes
+
+- Saves use Yandex player data when the SDK exposes `player.getData()` / `player.setData()`, with SDK storage/localStorage only as fallback.
+- The app listens to Yandex SDK pause/resume events so gameplay and audio stop correctly during portal overlays and resume safely afterwards.
+- On touch devices, the game requests fullscreen when a run starts or resumes if the Yandex SDK fullscreen API is available.
 
 ## Build commands
 

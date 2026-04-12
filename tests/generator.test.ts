@@ -28,6 +28,21 @@ describe("piece generator", () => {
     expect(canAnyPieceFit(board, set.map((piece) => piece.def))).toBe(true);
   });
 
+  it("keeps a placeable option even on higher levels", () => {
+    const board = createBoard();
+    for (let y = 0; y < 10; y += 1) {
+      for (let x = 0; x < 10; x += 1) {
+        board[y][x] = 1;
+      }
+    }
+    board[4][4] = 0;
+
+    const generator = new PieceGenerator(() => 0.95);
+    const set = generator.nextSet(board, 18, 9);
+
+    expect(canAnyPieceFit(board, set.map((piece) => piece.def))).toBe(true);
+  });
+
   it("avoids three large pieces in a row", () => {
     const board = createBoard();
     const generator = new PieceGenerator(createSeededRng("large-test"));

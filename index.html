@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="LumeLines: Daily Blocks is a relaxing block puzzle about placing glowing shapes, clearing lines, and chasing daily seeds." />
     <link
       rel="icon"
@@ -46,45 +46,76 @@
 
       <section id="screen-menu" class="screen" tabindex="-1">
         <div class="card wide">
-          <div class="brand">
-            <h1 class="title" data-i18n="title.full">LumeLines: Daily Blocks</h1>
-            <p class="tagline" data-i18n="tagline">Place. Clear. Glow - every day.</p>
-          </div>
-          <div class="menu-grid">
-            <button id="btn-play" class="btn primary" data-i18n="menu.play">Play</button>
-            <button id="btn-tutorial" class="btn" data-i18n="menu.tutorial">Tutorial</button>
-            <button id="btn-daily" class="btn" data-i18n="menu.daily">Daily Challenge</button>
-            <button
-              id="btn-menu-reward"
-              class="btn"
-              data-i18n="menu.rewarded"
-              aria-describedby="menu-reward-hint"
-            >
-              Watch Ad (Reward)
-            </button>
-            <button id="btn-themes" class="btn" data-i18n="menu.themes">Themes</button>
-            <button id="btn-settings" class="btn" data-i18n="menu.settings">Settings</button>
-          </div>
-          <p id="menu-reward-hint" class="hint" hidden role="status" aria-live="polite"></p>
-          <p id="menu-daily-status" class="hint" role="status" aria-live="polite"></p>
-          <div class="menu-meta">
-            <div class="pill">
-              <span data-i18n="menu.best">Best</span>
-              <strong id="menu-best">0</strong>
+          <div class="menu-layout">
+            <div class="menu-main">
+              <div class="brand">
+                <h1 class="title" data-i18n="title.full">LumeLines: Daily Blocks</h1>
+                <p class="tagline" data-i18n="tagline">Place. Clear. Glow - every day.</p>
+              </div>
+              <div class="menu-grid menu-grid--primary">
+                <button id="btn-play" class="btn primary" data-i18n="menu.play">Play</button>
+                <button id="btn-tutorial" class="btn" data-i18n="menu.tutorial">Tutorial</button>
+                <button id="btn-daily" class="btn" data-i18n="menu.daily">Daily Challenge</button>
+              </div>
+              <div class="menu-grid menu-grid--secondary">
+                <button id="btn-leaderboard" class="btn" data-i18n="menu.leaderboard">Leaderboard</button>
+                <button id="btn-themes" class="btn" data-i18n="menu.themes">Themes</button>
+                <button id="btn-settings" class="btn" data-i18n="menu.settings">Settings</button>
+              </div>
             </div>
-            <div class="pill">
-              <span data-i18n="menu.tokens">Tokens</span>
-              <strong id="menu-tokens">0</strong>
-            </div>
-            <div
-              id="adblock-banner"
-              class="hint"
-              hidden
-              role="status"
-              aria-live="polite"
-              data-i18n="menu.adblock"
-            >
-              Adblock detected. You can still play normally.
+            <div class="menu-side">
+              <section class="menu-panel" aria-labelledby="menu-panel-today-title">
+                <div class="menu-panel__head">
+                  <h2 id="menu-panel-today-title" class="menu-panel__title" data-i18n="menu.panel.today">
+                    Today
+                  </h2>
+                </div>
+                <p id="menu-daily-status" class="hint" role="status" aria-live="polite"></p>
+                <p id="menu-daily-reset-status" class="hint" role="status" aria-live="polite"></p>
+                <p id="menu-daily-streak-status" class="hint" role="status" aria-live="polite"></p>
+                <p id="menu-weekly-loop-status" class="hint" role="status" aria-live="polite"></p>
+                <p id="menu-login-reward-status" class="hint" role="status" aria-live="polite"></p>
+                <div id="menu-login-track" class="login-track"></div>
+                <div id="menu-daily-missions" class="mission-list"></div>
+                <button
+                  id="btn-menu-reward"
+                  class="btn"
+                  data-i18n="menu.rewarded"
+                  aria-describedby="menu-reward-hint"
+                >
+                  Get +3 Tokens
+                </button>
+                <p id="menu-reward-hint" class="hint" hidden role="status" aria-live="polite"></p>
+                <div class="menu-meta">
+                  <div class="pill">
+                    <span data-i18n="menu.best">Best</span>
+                    <strong id="menu-best">0</strong>
+                  </div>
+                  <div class="pill">
+                    <span data-i18n="menu.tokens">Tokens</span>
+                    <strong id="menu-tokens">0</strong>
+                  </div>
+                </div>
+                <div
+                  id="adblock-banner"
+                  class="hint"
+                  hidden
+                  role="status"
+                  aria-live="polite"
+                  data-i18n="menu.adblock"
+                >
+                  Adblock detected. You can still play normally.
+                </div>
+              </section>
+              <section class="menu-panel" aria-labelledby="menu-goals-title">
+                <div class="menu-panel__head">
+                  <h2 id="menu-goals-title" class="menu-panel__title" data-i18n="menu.panel.goals">
+                    Next Goals
+                  </h2>
+                  <span id="menu-goals-meta" class="menu-goals__meta">0 / 0</span>
+                </div>
+                <div id="menu-goals-list" class="menu-goals__list"></div>
+              </section>
             </div>
           </div>
         </div>
@@ -101,6 +132,18 @@
               <span data-i18n="hud.combo">Combo</span>
               <strong id="hud-combo">x1.00</strong>
             </div>
+            <div class="pill">
+              <span data-i18n="hud.level">Level</span>
+              <strong id="hud-level">1</strong>
+            </div>
+            <div class="pill">
+              <span data-i18n="hud.level_goal">Pulse</span>
+              <strong id="hud-level-goal">0 / 0</strong>
+            </div>
+            <div class="pill" id="hud-options-pill">
+              <span data-i18n="hud.options">Options</span>
+              <strong id="hud-options">0</strong>
+            </div>
           </div>
           <div class="hud-right">
             <div class="pill">
@@ -110,11 +153,18 @@
             <button id="btn-pause" class="btn ghost" data-i18n="hud.pause">Pause</button>
           </div>
         </div>
-        <div class="game-hint-wrap">
+        <div id="game-hint-wrap" class="game-hint-wrap">
           <p id="game-tutorial-hint" class="game-hint" hidden role="status" aria-live="polite"></p>
         </div>
         <div class="canvas-wrap">
-          <canvas id="game-canvas" width="900" height="1200"></canvas>
+          <canvas
+            id="game-canvas"
+            width="900"
+            height="1200"
+            tabindex="0"
+            aria-label="Game board"
+            data-i18n-aria-label="game.board_aria"
+          ></canvas>
         </div>
       </section>
 
@@ -155,6 +205,10 @@
               <strong id="results-moves">0</strong>
             </div>
             <div class="stat">
+              <span data-i18n="results.level">Level</span>
+              <strong id="results-level">1</strong>
+            </div>
+            <div class="stat">
               <span data-i18n="results.duration">Time</span>
               <strong id="results-duration">0:00</strong>
             </div>
@@ -168,6 +222,7 @@
             </div>
           </div>
           <p id="results-summary" class="results-summary" hidden></p>
+          <p id="results-return-note" class="results-return-note" hidden></p>
           <div class="menu-grid">
             <button
               id="btn-continue"
@@ -175,10 +230,30 @@
               data-i18n="results.continue"
               aria-describedby="results-hint"
             >
-              Continue (Rewarded)
+              Continue: 3 New Pieces
             </button>
             <button id="btn-double" class="btn" data-i18n="results.double" aria-describedby="results-hint">
-              Double Tokens (Rewarded)
+              Double: x2 Tokens
+            </button>
+            <button
+              id="btn-results-auth"
+              class="btn ghost"
+              type="button"
+              data-i18n="results.auth"
+              aria-describedby="results-hint"
+              hidden
+            >
+              Sign in to save score
+            </button>
+            <button
+              id="btn-results-store"
+              class="btn"
+              type="button"
+              data-i18n="results.store"
+              aria-describedby="results-hint"
+              hidden
+            >
+              Premium Offer
             </button>
             <button id="btn-play-again" class="btn" data-i18n="results.play_again">Play Again</button>
             <button id="btn-results-menu" class="btn ghost" data-i18n="results.menu">Main Menu</button>
@@ -187,10 +262,56 @@
         </div>
       </section>
 
+      <section id="screen-leaderboard" class="screen" tabindex="-1">
+        <div class="card wide">
+          <div class="leaderboard-title-row">
+            <h2 class="title" data-i18n="leaderboard.title">Leaderboard</h2>
+            <span id="leaderboard-source-badge" class="leaderboard-source-badge">Device</span>
+          </div>
+          <p id="leaderboard-hint" class="hint" data-i18n="leaderboard.hint">
+            Top runs on this device. On supported platforms, storage sync keeps them with your account.
+          </p>
+          <div class="leaderboard-grid">
+            <section class="leaderboard-panel" aria-labelledby="leaderboard-all-time-title">
+              <div class="leaderboard-panel__head">
+                <h3 id="leaderboard-all-time-title" data-i18n="leaderboard.all_time">All-Time Top 10</h3>
+              </div>
+              <div id="leaderboard-all-time"></div>
+            </section>
+            <section class="leaderboard-panel" aria-labelledby="leaderboard-daily-title">
+              <div class="leaderboard-panel__head">
+                <h3 id="leaderboard-daily-title" data-i18n="leaderboard.daily">Daily Legends</h3>
+              </div>
+              <div id="leaderboard-daily"></div>
+            </section>
+          </div>
+          <div class="menu-grid">
+            <button id="btn-leaderboard-clear" class="btn" data-i18n="leaderboard.clear">Clear Leaderboard</button>
+            <button
+              id="btn-leaderboard-auth"
+              class="btn"
+              type="button"
+              data-i18n="leaderboard.auth"
+              hidden
+            >
+              Sign in to upload scores
+            </button>
+            <button id="btn-leaderboard-back" class="btn ghost" data-i18n="leaderboard.back">Back</button>
+          </div>
+        </div>
+      </section>
+
       <section id="screen-themes" class="screen" tabindex="-1">
         <div class="card wide">
           <h2 class="title" data-i18n="themes.title">Themes</h2>
           <div id="themes-grid" class="themes-grid"></div>
+          <section id="themes-store-section" class="store-section" hidden>
+            <div class="store-section__head">
+              <h3 data-i18n="store.title">Shop</h3>
+              <p id="shop-hint" class="hint" data-i18n="store.hint.loading">Loading shop...</p>
+            </div>
+            <div id="shop-grid" class="shop-grid"></div>
+          </section>
           <div class="menu-grid">
             <button id="btn-themes-back" class="btn ghost" data-i18n="themes.back">Back</button>
           </div>
@@ -213,6 +334,36 @@
               <input id="setting-tap" type="checkbox" />
               <span data-i18n="settings.tap">Tap to place</span>
             </label>
+            <label class="toggle toggle--stack">
+              <span data-i18n="settings.player_name">Player Name</span>
+              <input
+                id="setting-player-name"
+                class="setting-input"
+                type="text"
+                maxlength="18"
+                autocomplete="nickname"
+                spellcheck="false"
+              />
+            </label>
+            <div id="settings-account" class="platform-account" hidden>
+              <div class="platform-account__head">
+                <span data-i18n="settings.account">Yandex Account</span>
+                <strong id="settings-account-status" class="platform-account__status"></strong>
+              </div>
+              <p id="settings-account-hint" class="hint"></p>
+              <label class="toggle">
+                <input id="setting-use-platform-name" type="checkbox" />
+                <span data-i18n="settings.account.use_name">Use Yandex display name</span>
+              </label>
+              <button
+                id="btn-settings-account-auth"
+                class="btn"
+                type="button"
+                data-i18n="settings.account.sign_in"
+              >
+                Sign in to Yandex
+              </button>
+            </div>
             <label class="toggle">
               <span data-i18n="settings.language">Language</span>
               <select id="setting-language" class="setting-select">
@@ -230,6 +381,38 @@
       <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
       <div id="debug-overlay" class="debug" hidden></div>
     </div>
+    <script>
+      (function () {
+        var langSource =
+          (navigator.languages && navigator.languages[0]) || navigator.language || document.documentElement.lang || "en";
+        var lang = /^ru/i.test(langSource) ? "ru" : "en";
+        var bootDict =
+          lang === "ru"
+            ? {
+                tagline: "Ставь. Очищай. Светись - каждый день.",
+                "loading.status": "Загрузка...",
+                "game.board_aria": "Игровое поле"
+              }
+            : {
+                tagline: "Place. Clear. Glow - every day.",
+                "loading.status": "Loading...",
+                "game.board_aria": "Game board"
+              };
+        document.documentElement.lang = lang;
+        document.querySelectorAll("[data-i18n]").forEach(function (element) {
+          var key = element.getAttribute("data-i18n");
+          if (key && bootDict[key]) {
+            element.textContent = bootDict[key];
+          }
+        });
+        document.querySelectorAll("[data-i18n-aria-label]").forEach(function (element) {
+          var key = element.getAttribute("data-i18n-aria-label");
+          if (key && bootDict[key]) {
+            element.setAttribute("aria-label", bootDict[key]);
+          }
+        });
+      })();
+    </script>
     <script type="module">
       (function () {
         const platform = import.meta.env.VITE_PLATFORM || "generic";
@@ -242,8 +425,20 @@
         const script = document.createElement("script");
         script.async = true;
         if (platform === "yandex") {
-          script.src = "https://yandex.ru/games/sdk/v2";
-          document.head.appendChild(script);
+          if (window.YaGames?.init) {
+            window.__lumelinesYandexSdkReady = Promise.resolve();
+            return;
+          }
+          if (!window.__lumelinesYandexSdkReady) {
+            script.src = "/sdk.js";
+            script.dataset.platformSdk = "yandex";
+            window.__lumelinesYandexSdkReady = new Promise((resolve, reject) => {
+              script.onload = () => resolve();
+              script.onerror = () => reject(new Error("yandex_sdk_load_failed"));
+              document.body.appendChild(script);
+            });
+            window.__lumelinesYandexSdkReady.catch(() => undefined);
+          }
           return;
         }
         if (platform === "vkplay") {
@@ -257,6 +452,9 @@
           document.head.appendChild(script);
         }
       })();
+    </script>
+    <script>
+      window.__lumelinesYandexSdkReady = window.__lumelinesYandexSdkReady || null;
     </script>
     <script type="module" src="/src/main.ts"></script>
   </body>

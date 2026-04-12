@@ -1,5 +1,5 @@
 import { createPlatformBridge, PlatformBridge, PlatformId } from "./bridge";
-import { resolvePlatformId, resolveUseMock } from "./env";
+import { resolveMonetizationConfig, resolvePlatformId, resolveUseMock } from "./env";
 import { createYandexAdapter } from "./yandex/adapter";
 import { createVkPlayAdapter } from "./vkplay/adapter";
 import { createGenericAdapter } from "./generic/adapter";
@@ -24,9 +24,10 @@ const createAdapter = (platform: PlatformId) => {
 export const createPlatform = (): PlatformBridge => {
   const platform = resolvePlatformId();
   const useMock = resolveUseMock();
+  const monetization = resolveMonetizationConfig();
   logger.info("platform_selected", { platform, mock: useMock });
   const adapter = useMock ? createMockAdapter(platform) : createAdapter(platform);
-  return createPlatformBridge(adapter);
+  return createPlatformBridge(adapter, { monetization });
 };
 
 export { resolvePlatformId, resolveUseMock };

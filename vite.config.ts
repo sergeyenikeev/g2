@@ -7,9 +7,25 @@ export default defineConfig(({ mode }) => {
   const distName = env.VITE_DIST_NAME || platform;
   const flatAssets = env.VITE_FLAT_ASSETS === "1" || env.VITE_FLAT_ASSETS === "true";
   const useFlatAssets = isYandex || flatAssets;
+  const yandexSdkProxy = {
+    "/sdk.js": {
+      target: "https://sdk.games.s3.yandex.net",
+      changeOrigin: true
+    }
+  };
 
   return {
     base: "./",
+    server: isYandex
+      ? {
+          proxy: yandexSdkProxy
+        }
+      : undefined,
+    preview: isYandex
+      ? {
+          proxy: yandexSdkProxy
+        }
+      : undefined,
     build: {
       outDir: `dist/${distName}`,
       sourcemap: false,

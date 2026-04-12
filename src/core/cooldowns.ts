@@ -1,4 +1,5 @@
-﻿import { CONTINUE_COOLDOWN_MS, REWARDED_COOLDOWN_MS } from "./constants";
+import { CONTINUE_COOLDOWN_MS, REWARDED_COOLDOWN_MS } from "./constants";
+import { DEFAULT_MONETIZATION_CONFIG } from "./monetization";
 
 export const nextRewardedAllowedAt = (lastRequestAt: number): number =>
   lastRequestAt + REWARDED_COOLDOWN_MS;
@@ -12,12 +13,13 @@ export const isContinueAllowed = (
   score: number,
   continueUsed: boolean,
   rewardCooldownUntil: number,
-  now: number
+  now: number,
+  minScore = DEFAULT_MONETIZATION_CONFIG.continueMinScore
 ): { ok: boolean; reason?: string } => {
   if (continueUsed) {
     return { ok: false, reason: "already_used" };
   }
-  if (score < 800) {
+  if (score < minScore) {
     return { ok: false, reason: "score_low" };
   }
   if (now < rewardCooldownUntil) {

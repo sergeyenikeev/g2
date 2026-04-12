@@ -1,4 +1,30 @@
 import type { PlatformId } from "../platform/bridge";
+import {
+  createDefaultLoginRewardState,
+  LoginRewardState,
+  normalizeLoginRewardState
+} from "../core/loginRewards";
+import {
+  createDefaultJourneyProgress,
+  JourneyProgressState,
+  normalizeJourneyProgress
+} from "../core/journey";
+import {
+  createDefaultDailyStreakState,
+  DailyStreakState,
+  normalizeDailyStreakState
+} from "../core/dailyStreak";
+import {
+  createDefaultDailyMissionProgress,
+  DailyMissionProgressState,
+  normalizeDailyMissionProgress
+} from "../core/dailyMissions";
+import {
+  createDefaultWeeklyLoopState,
+  getWeekKeyFromDateKey,
+  WeeklyLoopState,
+  normalizeWeeklyLoopState
+} from "../core/weeklyLoop";
 import { getDefaultLanguage, Language, normalizeLanguage } from "./i18n";
 import { THEMES } from "./ThemeManager";
 
@@ -8,6 +34,8 @@ export interface SettingsState {
   tapToPlace: boolean;
   themeId: string;
   language: Language;
+  playerName: string;
+  usePlatformPlayerName: boolean;
 }
 
 export interface ProgressState {
@@ -16,6 +44,11 @@ export interface ProgressState {
   themesUnlocked: string[];
   runsCount: number;
   tutorialCompleted: boolean;
+  loginReward: LoginRewardState;
+  dailyStreak: DailyStreakState;
+  weeklyLoop: WeeklyLoopState;
+  journey: JourneyProgressState;
+  dailyMissions: DailyMissionProgressState;
   settings: SettingsState;
 }
 
@@ -25,6 +58,11 @@ export interface StoredProgressSnapshot {
   themesUnlocked: unknown;
   runsCount: unknown;
   tutorialCompleted?: unknown;
+  loginReward?: unknown;
+  dailyStreak?: unknown;
+  weeklyLoop?: unknown;
+  journey?: unknown;
+  dailyMissions?: unknown;
   settings: unknown;
 }
 
@@ -33,6 +71,7 @@ interface ProgressDefaultsOptions {
   platformLanguage?: string | null;
   hostname?: string;
   isTouch?: boolean;
+  currentDateKey?: string | null;
 }
 
 const DEFAULT_THEME_ID = THEMES[0]?.id ?? "lume";
@@ -66,6 +105,13 @@ const normalizeThemeId = (value: unknown, themesUnlocked: string[]): string => {
   return themesUnlocked.includes(DEFAULT_THEME_ID) ? DEFAULT_THEME_ID : themesUnlocked[0] ?? DEFAULT_THEME_ID;
 };
 
+const normalizePlayerName = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.replace(/\s+/g, " ").trim().slice(0, 18);
+};
+
 const resolveLanguage = (
   storedLanguageValue: unknown,
   options: ProgressDefaultsOptions,
@@ -94,11 +140,20 @@ export const createDefaultProgress = (options: ProgressDefaultsOptions): Progres
   themesUnlocked: [DEFAULT_THEME_ID],
   runsCount: 0,
   tutorialCompleted: false,
+  loginReward: createDefaultLoginRewardState(),
+  dailyStreak: createDefaultDailyStreakState(),
+  weeklyLoop: createDefaultWeeklyLoopState(
+    options.currentDateKey ? getWeekKeyFromDateKey(options.currentDateKey) : null
+  ),
+  journey: createDefaultJourneyProgress(),
+  dailyMissions: createDefaultDailyMissionProgress(options.currentDateKey ?? null),
   settings: {
     musicEnabled: true,
     sfxEnabled: true,
     tapToPlace: options.isTouch ?? false,
     themeId: DEFAULT_THEME_ID,
+    playerName: "",
+    usePlatformPlayerName: false,
     language:
       normalizeLanguage(options.platformLanguage ?? null) ??
       getDefaultLanguage(options.platformId, options.hostname)
@@ -123,6 +178,14 @@ export const normalizeStoredProgress = (
       typeof snapshot.tutorialCompleted === "boolean"
         ? snapshot.tutorialCompleted
         : defaults.tutorialCompleted,
+    loginReward: normalizeLoginRewardState(snapshot.loginReward),
+    dailyStreak: normalizeDailyStreakState(snapshot.dailyStreak),
+    weeklyLoop: normalizeWeeklyLoopState(snapshot.weeklyLoop, options.currentDateKey ?? null),
+    journey: normalizeJourneyProgress(snapshot.journey),
+    dailyMissions: normalizeDailyMissionProgress(
+      snapshot.dailyMissions,
+      options.currentDateKey ?? null
+    ),
     settings: {
       musicEnabled:
         typeof rawSettings.musicEnabled === "boolean"
@@ -137,6 +200,11 @@ export const normalizeStoredProgress = (
           ? rawSettings.tapToPlace
           : defaults.settings.tapToPlace,
       themeId: normalizeThemeId(rawSettings.themeId, themesUnlocked),
+      playerName: normalizePlayerName(rawSettings.playerName),
+      usePlatformPlayerName:
+        typeof rawSettings.usePlatformPlayerName === "boolean"
+          ? rawSettings.usePlatformPlayerName
+          : defaults.settings.usePlatformPlayerName,
       language: resolveLanguage(rawSettings.language, options, defaults.settings.language)
     }
   };

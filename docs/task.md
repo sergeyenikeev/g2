@@ -66,7 +66,7 @@
 7) Tokens по итогам раунда: tokens = max(1, floor(score/1500)).
 8) Бонус токенов: +2 за новый bestScore; +3 за первую попытку Daily в день.
 9) Цены тем: 20, 35, 50, 70 Tokens (4 темы).
-10) Rewarded #1 Continue: доступен 1 раз за раунд, только если score≥800.
+10) Rewarded #1 Continue: доступен 1 раз за раунд, только если score≥450.
     После rewarded заменить 3 фигуры на [1x1, 1x2, 2x2]. Комбо сбросить в x1.00.
 11) Rewarded #2 Double Tokens: доступен 1 раз за раунд, только если tokens≥2. После rewarded tokens *= 2.
 12) Глобальный кулдаун rewarded-запросов: 90 секунд между любыми requestAd("rewarded") (успех/ошибка).

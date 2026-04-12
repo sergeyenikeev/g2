@@ -12,10 +12,13 @@
 
 - Confirm `YaGames.init()` and loading ready signal.
 - Confirm gameplay lifecycle integration when available.
+- Confirm SDK pause/resume events stop gameplay and audio during portal overlays, then restore them correctly.
 - Midgame ad shows on results screen.
 - Rewarded ads grant continue/double only after the reward callback.
-- Verify Yandex storage get/set or localStorage fallback.
+- Verify progress saves through Yandex player data and survives account re-entry; fallback storage should only be used when player data is unavailable.
 - Validate language auto-detection and hidden manual language selector.
+- Verify mobile runs request fullscreen when gameplay starts or resumes.
+- Confirm no browser/system media player appears while music is playing.
 - Verify touch input, drag, blur/resume, and no accidental text selection/context menu.
 - Run the Tutorial flow once in the real portal shell.
 
